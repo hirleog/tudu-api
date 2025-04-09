@@ -8,36 +8,37 @@ import {
   Put,
 } from '@nestjs/common';
 import { CardsService } from './cards.service';
-import { Card } from './entities/card.entity';
 import { CreateCardDto } from './dto/create-card.dto';
-import { UpdateCardDto } from './dto/update-card.dto';
 
 @Controller('cards')
 export class CardsController {
   constructor(private readonly cardsService: CardsService) {}
 
   @Post()
-  create(@Body() createCardDto: CreateCardDto): Card {
-    return this.cardsService.create(createCardDto as Card);
+  create(@Body() newCard: CreateCardDto) {
+    return this.cardsService.create(newCard); // Retorna o resultado do serviço
   }
 
   @Get()
-  findAll(): Card[] {
-    return this.cardsService.findAll();
+  findAll() {
+    return this.cardsService.findAll(); // Retorna todos os cards
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string): Card {
-    return this.cardsService.findOne(id);
+  findOne(@Param('id') client_id: string) {
+    return this.cardsService.findOne(client_id); // Retorna um card específico
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() updateCardDto: UpdateCardDto): Card {
-    return this.cardsService.update(id, updateCardDto as Card);
+  update(
+    @Param('id') client_id: string,
+    @Body() updatedCard: Partial<CreateCardDto>,
+  ) {
+    return this.cardsService.update(client_id, updatedCard); // Atualiza um card
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string): { success: boolean } {
-    return { success: this.cardsService.remove(id) };
+  remove(@Param('id') client_id: string) {
+    return this.cardsService.remove(client_id); // Remove um card
   }
 }

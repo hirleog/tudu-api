@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -9,6 +10,15 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
+
+  // Habilitar o ValidationPipe globalmente
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true, // Remove campos não definidos no DTO
+      forbidNonWhitelisted: true, // Lança erro para campos não permitidos
+      transform: true, // Transforma os dados para os tipos esperados no DTO
+    }),
+  );
   await app.listen(process.env.PORT ?? 3000);
 
   const allowedOrigins = [
