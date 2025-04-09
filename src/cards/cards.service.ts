@@ -1,8 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { card } from './entities/card.entity';
-import { CreateCardDto } from './dto/create-card.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+import { CreateCardDto } from './dto/create-card.dto';
+import { card } from './entities/card.entity';
 
 @Injectable()
 export class CardsService {
@@ -12,10 +11,16 @@ export class CardsService {
 
   async create(createCardDto: CreateCardDto) {
     const createInput: any = {
+      id_cliente: createCardDto.id_cliente,
+      id_prestador: createCardDto.id_prestador,
+      status_pedido: createCardDto.status_pedido,
       categoria: createCardDto.categoria,
       subcategoria: createCardDto.subcategoria,
       valor: createCardDto.valor,
       horario_preferencial: createCardDto.horario_preferencial,
+
+      codigo_confirmacao: createCardDto.codigo_confirmacao,
+
       cep: createCardDto.cep,
       street: createCardDto.street,
       neighborhood: createCardDto.neighborhood,
@@ -27,29 +32,69 @@ export class CardsService {
 
     return this.prisma.card.create({
       data: createInput,
-      // include: { address: true },
     });
   }
 
-  // Retorna todos os cards
-  findAll() {
-    return this.prisma.card.findMany(); 
+  async findAll(): Promise<card[]> {
+    const cards = await this.prisma.card.findMany();
+
+    // Transformar os dados para incluir o endereço como um objeto
+    return cards.map((card) => ({
+      id_pedido: card.id_pedido.toString(),
+      id_cliente: card.id_cliente.toString() || null,
+      id_prestador: card.id_prestador.toString() || null,
+      status_pedido: card.status_pedido,
+
+      categoria: card.categoria,
+      subcategoria: card.subcategoria,
+      valor: card.valor,
+      horario_preferencial: card.horario_preferencial,
+
+      address: {
+        cep: card.cep,
+        street: card.street,
+        neighborhood: card.neighborhood,
+        city: card.city,
+        state: card.state,
+        number: card.number,
+        complement: card.complement || null,
+      },
+    }));
   }
 
-  // Retorna um card específico pelo ID
-  findOne(client_id: string): card {
-    const card = this.cards.find((c) => c.client_id === client_id);
-    if (!card) {
-      throw new NotFoundException(`Card with ID ${client_id} not found`);
-    }
-    return card;
-  }
+  // async findOne(id: number) {
+  //   const card = await this.prisma.card.findUnique({
+  //     where: { id },
+  //   });
+
+  //   if (!card) {
+  //     throw new NotFoundException(`Card with ID ${id} not found`);
+  //   }
+
+  //   // Transformar os dados para incluir o endereço como um objeto
+  //   return {
+  //     client_id: card.id,
+  //     categoria: card.categoria,
+  //     subcategoria: card.subcategoria,
+  //     valor: card.valor,
+  //     horario_preferencial: card.horario_preferencial,
+  //     address: {
+  //       cep: card.cep,
+  //       street: card.street,
+  //       neighborhood: card.neighborhood,
+  //       city: card.city,
+  //       state: card.state,
+  //       number: card.number,
+  //       complement: card.complement,
+  //     },
+  //   };
+  // }
 
   // Atualiza um card específico pelo ID
-  update(client_id: string, updatedCard: Partial<card>): card {
-    const cardIndex = this.cards.findIndex((c) => c.client_id === client_id);
+  update(id_cliente: string, updatedCard: Partial<card>): card {
+    const cardIndex = this.cards.findIndex((c) => c.id_cliente === id_cliente);
     if (cardIndex === -1) {
-      throw new NotFoundException(`Card with ID ${client_id} not found`);
+      throw new NotFoundException(`Card with ID ${id_cliente} not found`);
     }
     const existingCard = this.cards[cardIndex];
     const updated = { ...existingCard, ...updatedCard };
@@ -58,10 +103,10 @@ export class CardsService {
   }
 
   // Remove um card específico pelo ID
-  remove(client_id: string): void {
-    const cardIndex = this.cards.findIndex((c) => c.client_id === client_id);
+  remove(id_cliente: string): void {
+    const cardIndex = this.cards.findIndex((c) => c.id_cliente === id_cliente);
     if (cardIndex === -1) {
-      throw new NotFoundException(`Card with ID ${client_id} not found`);
+      throw new NotFoundException(`Card with ID ${id_cliente} not found`);
     }
     this.cards.splice(cardIndex, 1);
   }

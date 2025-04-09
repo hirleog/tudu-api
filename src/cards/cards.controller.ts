@@ -24,10 +24,10 @@ export class CardsController {
     return this.cardsService.findAll(); // Retorna todos os cards
   }
 
-  @Get(':id')
-  findOne(@Param('id') client_id: string) {
-    return this.cardsService.findOne(client_id); // Retorna um card específico
-  }
+  // @Get(':id')
+  // findOne(@Param('id') client_id: string) {
+  //   return this.cardsService.findOne(client_id); // Retorna um card específico
+  // }
 
   @Put(':id')
   update(
