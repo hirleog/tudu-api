@@ -1,0 +1,34 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Card {
+  id               String   @id @default(uuid())
+  cardTitle        String   @db.VarChar(255)
+  dateTimeSelected String   @db.VarChar(255)
+  price            String   @db.VarChar(50)
+  address          Address? @relation(fields: [addressId], references: [id])
+  addressId        String?
+  filters          Json // Armazena os filtros como JSON
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Address {
+  id           String   @id @default(uuid())
+  cep          String   @db.Char(8)
+  street       String   @db.VarChar(255)
+  neighborhood String   @db.VarChar(255)
+  city         String   @db.VarChar(255)
+  state        String   @db.Char(2)
+  number       String   @db.VarChar(10)
+  complement   String?  @db.VarChar(255)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  Card         Card[]
+}
