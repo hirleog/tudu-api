@@ -1,9 +1,13 @@
 import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateCardDto {
+  // @IsOptional()
+  // @IsString()
+  // id_pedido: string;
+
   @IsNotEmpty()
   id_cliente: string; // publicado, em andamento, finalizado
-  
+
   @IsNotEmpty()
   id_prestador: string; // publicado, em andamento, finalizado
 

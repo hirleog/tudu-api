@@ -35,12 +35,15 @@ export class CardsService {
     });
   }
 
-  async findAll(): Promise<card[]> {
-    const cards = await this.prisma.card.findMany();
-
+  async findAll(id_cliente: string): Promise<card[]> {
+    const cards = await this.prisma.card.findMany({
+      where: {
+        id_cliente: parseInt(id_cliente), // Filtra os cards pelo id_cliente
+      },
+    });
     // Transformar os dados para incluir o endereço como um objeto
     return cards.map((card) => ({
-      id_pedido: card.id_pedido.toString(),
+      id_pedido: card.id_pedido,
       id_cliente: card.id_cliente.toString() || null,
       id_prestador: card.id_prestador.toString() || null,
       status_pedido: card.status_pedido,

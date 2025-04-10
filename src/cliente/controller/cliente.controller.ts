@@ -10,9 +10,4 @@ export class ClienteController {
   async create(@Body() createClienteDto: CreateClienteDto) {
     return this.clienteService.create(createClienteDto);
   }
-
-  @Get()
-  findAll() {
-    return this.clienteService.findAll(); // Retorna todos os cards
-  }
 }

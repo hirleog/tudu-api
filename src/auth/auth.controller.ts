@@ -33,6 +33,13 @@ export class AuthController {
       body.email,
       body.password,
     );
-    return this.authService.login(cliente);
+    // Gera o token JWT
+    const token = await this.authService.login(cliente);
+
+    // Retorna o token e o id_cliente
+    return {
+      id_cliente: cliente.id_cliente, // Inclui o ID do cliente no retorno
+      ...token, // Inclui o access_token gerado
+    };
   }
 }

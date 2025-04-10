@@ -30,7 +30,7 @@ model Cliente {
 }
 
 model Card {
-  id_pedido    Int @id @default(autoincrement())
+  id_pedido    String   @id @default(uuid()) // Alterado para usar UUID como identificador
   id_cliente   Int
   id_prestador Int // null ( e quando na tabela candidatura tver um aceito, ai preenche aqui)
 
@@ -61,7 +61,7 @@ model Card {
 }
 
 model Candidatura {
-  pedido_id         Int      @id @default(autoincrement()) // ID único e chave primária
+  pedido_id         String   @id @default(uuid()) // ID único e chave primária
   prestador_id      String? // ID do prestador (opcional)
   valor_negociado   String? // Valor negociado (opcional)
   horario_negociado String? // Horário negociado (opcional)

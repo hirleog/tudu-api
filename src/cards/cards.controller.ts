@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Put,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { CardsService } from './cards.service';
@@ -24,8 +25,10 @@ export class CardsController {
 
   @UseGuards(JwtAuthGuard)
   @Get()
-  findAll() {
-    return this.cardsService.findAll(); // Retorna todos os cards
+  findAll(@Req() req: any) {
+    const id_cliente = req.user.id_cliente; // Obtém o id_cliente do token JWT
+
+    return this.cardsService.findAll(id_cliente); // Retorna todos os cards
   }
 
   // @Get(':id')
