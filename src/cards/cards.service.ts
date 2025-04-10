@@ -43,7 +43,7 @@ export class CardsService {
     });
     // Transformar os dados para incluir o endereço como um objeto
     return cards.map((card) => ({
-      id_pedido: card.id_pedido,
+      // id_pedido: card.id_pedido,
       id_cliente: card.id_cliente.toString() || null,
       id_prestador: card.id_prestador.toString() || null,
       status_pedido: card.status_pedido,

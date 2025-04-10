@@ -1,5 +1,5 @@
 export class card {
-  id_pedido: string;
+  id_pedido?: string;
   id_cliente?: string;
   id_prestador?: string;
   status_pedido: string;
