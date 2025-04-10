@@ -5,9 +5,19 @@ import { CardsModule } from './cards/cards.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ClienteModule } from './cliente/cliente.module';
 import { AuthModule } from './auth/auth.module';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [CardsModule, ClienteModule, PrismaModule, AuthModule],
+  imports: [
+    CardsModule,
+    ClienteModule,
+    PrismaModule,
+    AuthModule,
+
+    ConfigModule.forRoot({
+      isGlobal: true, // para estar disponível em toda a aplicação
+    }),
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
