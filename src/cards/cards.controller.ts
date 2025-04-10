@@ -6,19 +6,23 @@ import {
   Param,
   Post,
   Put,
+  UseGuards,
 } from '@nestjs/common';
 import { CardsService } from './cards.service';
 import { CreateCardDto } from './dto/create-card.dto';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('cards')
 export class CardsController {
   constructor(private readonly cardsService: CardsService) {}
 
+  @UseGuards(JwtAuthGuard)
   @Post()
   create(@Body() newCard: CreateCardDto) {
     return this.cardsService.create(newCard); // Retorna o resultado do serviço
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get()
   findAll() {
     return this.cardsService.findAll(); // Retorna todos os cards

@@ -7,29 +7,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// model Cliente {
-//   id_cliente      Int       @id @default(autoincrement()) // Chave primária com autoincremento
-//   telefone        String    @db.VarChar(15)
-//   nome            String    @db.VarChar(100)
-//   sobrenome       String    @db.VarChar(100)
-//   cpf             String?   @unique @db.VarChar(14) // CPF único e opcional
-//   data_nascimento DateTime?
-//   email           String    @unique @db.VarChar(100)
-//   endereco_estado String?   @db.VarChar(50)
-//   endereco_cidade String?   @db.VarChar(100)
-//   endereco_bairro String?   @db.VarChar(100)
-//   endereco_rua    String?   @db.VarChar(100)
-//   endereco_numero String?   @db.VarChar(10)
-//   data_cadastro   DateTime  @default(now())
-//   status          String    @default("Ativo") @db.VarChar(50)
-//   created_at      DateTime  @default(now())
-//   updated_at      DateTime  @default(now()) @updatedAt
+model Cliente {
+  id_cliente      Int      @id @default(autoincrement())
+  telefone        String   @db.VarChar(15)
+  nome            String   @db.VarChar(100)
+  sobrenome       String   @db.VarChar(100)
+  cpf             String?  @unique @db.VarChar(14)
+  data_nascimento String?
+  email           String   @unique @db.VarChar(100)
+  password        String // Adicionado para autenticação
+  endereco_estado String?  @db.VarChar(50)
+  endereco_cidade String?  @db.VarChar(100)
+  endereco_bairro String?  @db.VarChar(100)
+  endereco_rua    String?  @db.VarChar(100)
+  endereco_numero String?  @db.VarChar(10)
+  data_cadastro   DateTime @default(now())
+  status          String   @default("Ativo") @db.VarChar(50)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @default(now()) @updatedAt
 
-//   // Relacionamento com Card
-//   Card Card[]
-
-//   @@map("Cliente") // Nome da tabela no banco de dados
-// }
+  Card Card[]
+}
 
 model Card {
   id_pedido    Int @id @default(autoincrement())
@@ -57,7 +55,7 @@ model Card {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Cliente Cliente @relation(fields: [id_cliente], references: [id_cliente])
+  Cliente Cliente @relation(fields: [id_cliente], references: [id_cliente])
 
   Candidatura Candidatura[]
 }
