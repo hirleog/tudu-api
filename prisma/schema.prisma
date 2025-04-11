@@ -30,16 +30,20 @@ model Cliente {
 }
 
 model Card {
-  id_pedido    String   @id @default(uuid()) // Alterado para usar UUID como identificador
+  id_pedido    String @id @default(uuid()) // UUID como identificador único
   id_cliente   Int
-  id_prestador Int // null ( e quando na tabela candidatura tver um aceito, ai preenche aqui)
+  id_prestador Int? // Relacionamento opcional com Prestador
 
   categoria            String
   subcategoria         String
   valor                String
   horario_preferencial String
 
-  codigo_confirmacao String? // esse codigo é para o usuario passar ao prestador
+  valor_negociado   String? // Valor negociado (opcional)
+  horario_negociado String? // Horário negociado (opcional)
+  status            Boolean? // Status do card (opcional)
+
+  codigo_confirmacao String? // Código para o cliente passar ao prestador
   data_finalizacao   String?
   status_pedido      String // publicado, em andamento, finalizado
 
@@ -53,12 +57,43 @@ model Card {
   complement   String?
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   Cliente Cliente @relation(fields: [id_cliente], references: [id_cliente])
 
   Candidatura Candidatura[]
 }
+
+// model Card {
+//   id_pedido    String   @id @default(uuid()) // Alterado para usar UUID como identificador
+//   id_cliente   Int
+//   id_prestador Int // null ( e quando na tabela candidatura tver um aceito, ai preenche aqui)
+
+//   categoria            String
+//   subcategoria         String
+//   valor                String
+//   horario_preferencial String
+
+//   codigo_confirmacao String? // esse codigo é para o usuario passar ao prestador
+//   data_finalizacao   String?
+//   status_pedido      String // publicado, em andamento, finalizado
+
+//   // Campos de endereço
+//   cep          String
+//   street       String
+//   neighborhood String
+//   city         String
+//   state        String
+//   number       String
+//   complement   String?
+
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+
+//   Cliente Cliente @relation(fields: [id_cliente], references: [id_cliente])
+
+//   Candidatura Candidatura[]
+// }
 
 model Candidatura {
   pedido_id         String   @id @default(uuid()) // ID único e chave primária

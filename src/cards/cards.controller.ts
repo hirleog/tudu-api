@@ -31,10 +31,11 @@ export class CardsController {
     return this.cardsService.findAll(id_cliente); // Retorna todos os cards
   }
 
-  // @Get(':id')
-  // findOne(@Param('id') client_id: string) {
-  //   return this.cardsService.findOne(client_id); // Retorna um card específico
-  // }
+  @UseGuards(JwtAuthGuard)
+  @Get(':id_pedido')
+  async findById(@Param('id_pedido') id_pedido: string) {
+    return this.cardsService.findById(id_pedido);
+  }
 
   @Put(':id')
   update(

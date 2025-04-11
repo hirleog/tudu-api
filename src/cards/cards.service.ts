@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateCardDto } from './dto/create-card.dto';
 import { card } from './entities/card.entity';
+import { UpdateCardDto } from './dto/update-card.dto';
 
 @Injectable()
 export class CardsService {
@@ -43,7 +44,7 @@ export class CardsService {
     });
     // Transformar os dados para incluir o endereço como um objeto
     return cards.map((card) => ({
-      // id_pedido: card.id_pedido,
+      id_pedido: card.id_pedido,
       id_cliente: card.id_cliente.toString() || null,
       id_prestador: card.id_prestador.toString() || null,
       status_pedido: card.status_pedido,
@@ -65,44 +66,76 @@ export class CardsService {
     }));
   }
 
-  // async findOne(id: number) {
-  //   const card = await this.prisma.card.findUnique({
-  //     where: { id },
-  //   });
+  async findById(id_pedido: string): Promise<card> {
+    const card = await this.prisma.card.findUnique({
+      where: {
+        id_pedido, // Filtra pelo id_pedido
+      },
+    });
 
-  //   if (!card) {
-  //     throw new NotFoundException(`Card with ID ${id} not found`);
-  //   }
-
-  //   // Transformar os dados para incluir o endereço como um objeto
-  //   return {
-  //     client_id: card.id,
-  //     categoria: card.categoria,
-  //     subcategoria: card.subcategoria,
-  //     valor: card.valor,
-  //     horario_preferencial: card.horario_preferencial,
-  //     address: {
-  //       cep: card.cep,
-  //       street: card.street,
-  //       neighborhood: card.neighborhood,
-  //       city: card.city,
-  //       state: card.state,
-  //       number: card.number,
-  //       complement: card.complement,
-  //     },
-  //   };
-  // }
-
-  // Atualiza um card específico pelo ID
-  update(id_cliente: string, updatedCard: Partial<card>): card {
-    const cardIndex = this.cards.findIndex((c) => c.id_cliente === id_cliente);
-    if (cardIndex === -1) {
-      throw new NotFoundException(`Card with ID ${id_cliente} not found`);
+    if (!card) {
+      throw new NotFoundException(`Card with ID ${id_pedido} not found`);
     }
-    const existingCard = this.cards[cardIndex];
-    const updated = { ...existingCard, ...updatedCard };
-    this.cards[cardIndex] = updated;
-    return updated;
+
+    // Transformar os dados para incluir o endereço como um objeto
+    return {
+      id_pedido: card.id_pedido,
+      id_cliente: card.id_cliente.toString() || null,
+      id_prestador: card.id_prestador?.toString() || null,
+      status_pedido: card.status_pedido,
+
+      categoria: card.categoria,
+      subcategoria: card.subcategoria,
+      valor: card.valor,
+      horario_preferencial: card.horario_preferencial,
+
+      address: {
+        cep: card.cep,
+        street: card.street,
+        neighborhood: card.neighborhood,
+        city: card.city,
+        state: card.state,
+        number: card.number,
+        complement: card.complement || null,
+      },
+    };
+  }
+
+  async update(id_pedido: string, updateCardDto: Partial<UpdateCardDto>) {
+    // Verifica se o card existe
+    const existingCard = await this.prisma.card.findUnique({
+      where: { id_pedido },
+    });
+
+    if (!existingCard) {
+      throw new NotFoundException(`Card with ID ${id_pedido} not found`);
+    }
+
+    // Atualiza o card
+    // return this.prisma.card.update({
+    //   where: { id_pedido },
+    //   data: {
+    //     ...updateCardDto,
+    //     id_cliente: updateCardDto.id_cliente
+    //       ? parseInt(updateCardDto.id_cliente)
+    //       : undefined,
+    //     id_prestador: updateCardDto.id_prestador
+    //       ? parseInt(updateCardDto.id_prestador)
+    //       : undefined,
+    //   },
+    // });
+    return this.prisma.card.update({
+      where: { id_pedido },
+      data: {
+        ...updateCardDto,
+        id_cliente: updateCardDto.id_cliente
+          ? parseInt(updateCardDto.id_cliente)
+          : undefined,
+        id_prestador: updateCardDto.id_prestador
+          ? parseInt(updateCardDto.id_prestador)
+          : undefined,
+      },
+    });
   }
 
   // Remove um card específico pelo ID

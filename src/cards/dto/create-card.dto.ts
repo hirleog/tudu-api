@@ -1,10 +1,6 @@
 import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateCardDto {
-  // @IsOptional()
-  // @IsString()
-  // id_pedido: string;
-
   @IsNotEmpty()
   id_cliente: string; // publicado, em andamento, finalizado
 
@@ -14,6 +10,22 @@ export class CreateCardDto {
   @IsNotEmpty()
   @IsString()
   status_pedido: string; // publicado, em andamento, finalizado
+
+  @IsOptional()
+  @IsString()
+  valor_negociado?: string;
+
+  @IsOptional()
+  @IsString()
+  horario_negociado?: string;
+    
+  @IsOptional()
+  @IsString()
+  data_candidatura?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
 
   @IsNotEmpty()
   @IsString()
