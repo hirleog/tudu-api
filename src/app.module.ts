@@ -6,11 +6,13 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ClienteModule } from './cliente/cliente.module';
 import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
+import { PrestadorModule } from './cliente copy/prestador.module';
 
 @Module({
   imports: [
     CardsModule,
     ClienteModule,
+    PrestadorModule,
     PrismaModule,
     AuthModule,
 

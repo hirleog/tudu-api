@@ -1,57 +1,76 @@
 import {
   IsEmail,
-  IsNotEmpty,
   IsOptional,
   IsString,
-  IsStrongPassword,
+  IsNumber,
+  Length,
 } from 'class-validator';
 
-export class CreateClienteDto {
-  @IsNotEmpty()
+export class CreatePrestadorDto {
   @IsString()
+  @IsOptional()
+  @Length(10, 15)
   telefone: string;
 
-  @IsNotEmpty()
   @IsString()
+  @Length(2, 100)
   nome: string;
 
-  @IsNotEmpty()
   @IsString()
+  @Length(2, 100)
   sobrenome: string;
 
   @IsOptional()
   @IsString()
+  @Length(11, 14)
   cpf?: string;
 
   @IsOptional()
   @IsString()
   data_nascimento?: string;
 
-  @IsNotEmpty()
   @IsEmail()
   email: string;
 
-  @IsNotEmpty()
-  @IsStrongPassword()
+  @IsString()
+  @Length(8, 100)
   password: string;
 
   @IsOptional()
   @IsString()
+  @Length(2, 50)
   endereco_estado?: string;
 
   @IsOptional()
   @IsString()
+  @Length(2, 100)
   endereco_cidade?: string;
 
   @IsOptional()
   @IsString()
+  @Length(2, 100)
   endereco_bairro?: string;
 
   @IsOptional()
   @IsString()
+  @Length(2, 100)
   endereco_rua?: string;
 
   @IsOptional()
   @IsString()
+  @Length(1, 10)
   endereco_numero?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(2, 100)
+  especializacao: string;
+
+  @IsOptional()
+  @IsString()
+  descricao?: string;
+
+  @IsOptional()
+  @IsString()
+  avaliacao?: string;
 }

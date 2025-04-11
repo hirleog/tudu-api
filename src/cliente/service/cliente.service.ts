@@ -1,13 +1,55 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { CreateClienteDto } from '../dto/create-client.dto';
+import { CreateClienteDto } from '../dto/create-cliente.dto';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class ClienteService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createClienteDto: CreateClienteDto) {
-    return this.prisma.cliente.create({
+  // async create(createUsuarioDto: CreateUsuarioDto) {
+  //   return this.prisma.cliente.create({
+  //     data: {
+  //       telefone: createUsuarioDto.telefone,
+  //       nome: createUsuarioDto.nome,
+  //       sobrenome: createUsuarioDto.sobrenome,
+  //       cpf: createUsuarioDto.cpf,
+  //       data_nascimento: createUsuarioDto.data_nascimento,
+  //       email: createUsuarioDto.email,
+  //       endereco_estado: createUsuarioDto.endereco_estado,
+  //       endereco_cidade: createUsuarioDto.endereco_cidade,
+  //       endereco_bairro: createUsuarioDto.endereco_bairro,
+  //       endereco_rua: createUsuarioDto.endereco_rua,
+  //       endereco_numero: createUsuarioDto.endereco_numero,
+  //       password: createUsuarioDto.password, // Added password field
+  //     },
+  //   });
+  // }
+  async createCliente(createClienteDto: CreateClienteDto) {
+    const hashedPassword = await bcrypt.hash(createClienteDto.password, 10);
+
+    // Verifica se o email já existe
+    const existingEmail = await this.prisma.cliente.findUnique({
+      where: { email: createClienteDto.email },
+    });
+
+    if (existingEmail) {
+      throw new Error('O email já está em uso.');
+    }
+
+    // Verifica se o CPF já existe
+    if (createClienteDto.cpf) {
+      const existingCpf = await this.prisma.cliente.findUnique({
+        where: { cpf: createClienteDto.cpf },
+      });
+
+      if (existingCpf) {
+        throw new Error('O CPF já está em uso.');
+      }
+    }
+
+    // Cria o registro na tabela Cliente
+    const cliente = await this.prisma.cliente.create({
       data: {
         telefone: createClienteDto.telefone,
         nome: createClienteDto.nome,
@@ -15,14 +57,20 @@ export class ClienteService {
         cpf: createClienteDto.cpf,
         data_nascimento: createClienteDto.data_nascimento,
         email: createClienteDto.email,
+        password: hashedPassword,
         endereco_estado: createClienteDto.endereco_estado,
         endereco_cidade: createClienteDto.endereco_cidade,
         endereco_bairro: createClienteDto.endereco_bairro,
         endereco_rua: createClienteDto.endereco_rua,
         endereco_numero: createClienteDto.endereco_numero,
-        password: createClienteDto.password, // Added password field
       },
     });
+
+    return cliente;
+  }
+
+  async findAllClientes() {
+    return this.prisma.cliente.findMany();
   }
 
   async findAll(): Promise<any[]> {

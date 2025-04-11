@@ -11,24 +11,46 @@ export class AuthService {
   ) {}
 
   async validateCliente(email: string, password: string) {
-    const cliente = await this.prisma.cliente.findUnique({
-      where: { email },
-    });
+    const cliente = await this.prisma.cliente.findUnique({ where: { email } });
 
     if (!cliente) {
-      throw new UnauthorizedException('Credenciais inválidas');
+      throw new UnauthorizedException('Email ou senha inválidos.');
     }
 
     const isPasswordValid = await bcrypt.compare(password, cliente.password);
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Credenciais inválidas');
+      throw new UnauthorizedException('Email ou senha inválidos.');
     }
 
     return cliente;
   }
 
-  async login(cliente: any) {
+  async validatePrestador(email: string, password: string) {
+    const prestador = await this.prisma.prestador.findUnique({
+      where: { email },
+    });
+
+    if (!prestador) {
+      throw new UnauthorizedException('Email ou senha inválidos.');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, prestador.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Email ou senha inválidos.');
+    }
+
+    return prestador;
+  }
+
+  async loginCliente(cliente: any) {
     const payload = { sub: cliente.id_cliente, email: cliente.email };
+    return {
+      access_token: this.jwtService.sign(payload),
+    };
+  }
+
+  async loginPrestador(prestador: any) {
+    const payload = { sub: prestador.id_prestador, email: prestador.email };
     return {
       access_token: this.jwtService.sign(payload),
     };

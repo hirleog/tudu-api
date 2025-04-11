@@ -12,6 +12,7 @@ import {
 import { CardsService } from './cards.service';
 import { CreateCardDto } from './dto/create-card.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { UpdateCardDto } from './dto/update-card.dto';
 
 @Controller('cards')
 export class CardsController {
@@ -19,7 +20,7 @@ export class CardsController {
 
   @UseGuards(JwtAuthGuard)
   @Post()
-  create(@Body() newCard: CreateCardDto) {
+  create(@Body() newCard: CreateCardDto, candidato: UpdateCardDto) {
     return this.cardsService.create(newCard); // Retorna o resultado do serviço
   }
 
@@ -37,16 +38,16 @@ export class CardsController {
     return this.cardsService.findById(id_pedido);
   }
 
-  @Put(':id')
+  @Put(':id_pedido')
   update(
-    @Param('id') client_id: string,
-    @Body() updatedCard: Partial<CreateCardDto>,
+    @Param('id_pedido') id_pedido: string,
+    @Body() updatedCard: UpdateCardDto,
   ) {
-    return this.cardsService.update(client_id, updatedCard); // Atualiza um card
+    return this.cardsService.update(id_pedido, updatedCard); // Atualiza um card
   }
 
-  @Delete(':id')
-  remove(@Param('id') client_id: string) {
-    return this.cardsService.remove(client_id); // Remove um card
-  }
+  // @Delete(':id')
+  // remove(@Param('id') client_id: string) {
+  //   return this.cardsService.remove(client_id); // Remove um card
+  // }
 }

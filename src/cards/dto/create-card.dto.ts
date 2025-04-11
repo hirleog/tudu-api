@@ -1,10 +1,18 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsArray,
+  IsNotEmpty,
+  IsNumberString,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class CreateCardDto {
-  @IsNotEmpty()
-  id_cliente: string; // publicado, em andamento, finalizado
+  @IsOptional()
+  @IsNumberString() // Aceita números como strings
+  id_cliente?: any;
 
-  @IsNotEmpty()
+  @IsOptional()
+  @IsNumberString() // Aceita números como strings
   id_prestador: string; // publicado, em andamento, finalizado
 
   @IsNotEmpty()
@@ -18,7 +26,7 @@ export class CreateCardDto {
   @IsOptional()
   @IsString()
   horario_negociado?: string;
-    
+
   @IsOptional()
   @IsString()
   data_candidatura?: string;
@@ -26,6 +34,14 @@ export class CreateCardDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @IsOptional()
+  @IsString()
+  codigo_confirmacao: string;
+
+  @IsOptional()
+  @IsString()
+  data_finalização: string;
 
   @IsNotEmpty()
   @IsString()
@@ -44,8 +60,8 @@ export class CreateCardDto {
   horario_preferencial: string;
 
   @IsOptional()
-  @IsString()
-  codigo_confirmacao: string;
+  @IsArray()
+  candidaturas?: any[]; // Array de candidaturas
 
   // Campos de endereço
   @IsNotEmpty()
