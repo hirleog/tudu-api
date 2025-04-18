@@ -19,7 +19,8 @@ async function bootstrap() {
       transform: true, // Transforma os dados para os tipos esperados no DTO
     }),
   );
-  await app.listen(process.env.PORT ?? 3000);
+  // await app.listen(process.env.PORT ?? 3000);
+  await app.listen(3000, '0.0.0.0');  // Força escutar em IPv4 e IPv6
 
   const allowedOrigins = [
     'http://localhost:4200',
