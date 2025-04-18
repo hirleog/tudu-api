@@ -6,7 +6,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
-    origin: 'http://localhost:4200', // ou '*' para permitir qualquer origem
+    origin: [
+      'http://localhost:4200',
+      'https://use-tudu.com.br',
+    ], // ou '*' para permitir qualquer origem
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
