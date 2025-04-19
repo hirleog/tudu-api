@@ -2,9 +2,11 @@ name: Deploy Tudu API (Production)
 
 on:
   push:
-    branches: ['master']
+    branches: ['master', 'main']
     paths:
-      - 'api/**'
+      - 'src/**' # Monitora mudanças nos arquivos fonte
+      - 'package.json' # Se houver mudanças nas dependências
+      - 'nest-cli.json' # Configurações do NestJS
 
 jobs:
   deploy:
@@ -14,78 +16,47 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Configuração SSH segura
+      # Configuração SSH
       - name: Configurar SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          echo -e "Host 89.116.73.70\n  StrictHostKeyChecking yes\n  LogLevel VERBOSE" > ~/.ssh/config
-          ssh-keyscan -t ed25519 89.116.73.70 >> ~/.ssh/known_hosts
+          echo -e "Host 89.116.73.70\n  StrictHostKeyChecking yes" > ~/.ssh/config
+          ssh-keyscan 89.116.73.70 >> ~/.ssh/known_hosts
 
-      # Build da API com validação rigorosa
-      - name: Build da API
-        working-directory: ./api
+      # Instalação e Build
+      - name: Instalar e Buildar
         run: |
           npm ci
           npm run build
+          echo "✅ Build concluído. Arquivos em dist/:"
+          ls -la dist/
 
-          echo "=== Verificação do Build ==="
-          if [ ! -f "dist/main.js" ]; then
-            echo "❌ ERRO: main.js não encontrado em dist/"
-            echo "Conteúdo de dist/:"
-            ls -la dist/
-            echo "Procurando arquivos JavaScript:"
-            find dist/ -name "*.js"
-            exit 1
-          fi
-
-          echo "✅ Build validado:"
-          ls -la dist/main.js
-          echo "ENTRY_POINT=main.js" >> $GITHUB_ENV
-
-      # Deploy com verificação em tempo real
-      - name: Sincronizar build
+      # Deploy
+      - name: Sincronizar arquivos
         run: |
-          echo "📦 Listando arquivos locais:"
-          ls -la ./api/dist/
-
-          echo "🚀 Enviando arquivos..."
           rsync -avz \
             --progress \
             --delete \
-            --chown=deployer:www-data \
+            --exclude='node_modules' \
+            --exclude='.env' \
             -e "ssh -i ~/.ssh/deploy_key" \
-            ./api/dist/ deployer@89.116.73.70:/var/www/tudu-api/
+            ./dist/ \
+            ./package.json \
+            deployer@89.116.73.70:/var/www/tudu-api/
 
-          echo "🔍 Verificação remota:"
-          ssh -i ~/.ssh/deploy_key deployer@89.116.73.70 "ls -la /var/www/tudu-api/"
-
-      # Configuração do PM2 com validação
-      - name: Configurar PM2
+      # Configuração do PM2
+      - name: Configurar Serviço
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 89.116.73.70
           username: deployer
           key: ${{ secrets.API_TUDU_SSH_KEY }}
           script: |
-            echo "=== Validação pré-deploy ==="
-            if [ ! -f "/var/www/tudu-api/main.js" ]; then
-              echo "❌ ERRO CRÍTICO: main.js não encontrado no servidor!"
-              echo "Conteúdo do diretório:"
-              ls -la /var/www/tudu-api/
-              echo "Arquivos existentes:"
-              find /var/www/tudu-api -type f
-              exit 1
-            fi
-
-            echo "=== Configurando ambiente ==="
-            sudo mkdir -p /var/log/tudu-api
-            sudo chown -R deployer:www-data /var/log/tudu-api /var/www/tudu-api
-
-            echo "=== Instalando dependências ==="
+            echo "=== Preparando ambiente ==="
             cd /var/www/tudu-api
-            npm ci --production --ignore-scripts
+            npm ci --production
 
             echo "=== Configurando PM2 ==="
             cat <<EOF > ecosystem.config.js
@@ -99,20 +70,16 @@ jobs:
                   PORT: 3000
                 },
                 error_file: "/var/log/tudu-api/error.log",
-                out_file: "/var/log/tudu-api/out.log",
-                time: true
+                out_file: "/var/log/tudu-api/out.log"
               }]
             }
             EOF
 
-            echo "=== Reiniciando serviço ==="
+            echo "=== Reiniciando API ==="
             pm2 delete tudu-api --silent || true
             pm2 start ecosystem.config.js
             pm2 save
             pm2 startup
 
-            echo "=== Verificação final ==="
-            echo "📌 Entrypoint: $(realpath /var/www/tudu-api/main.js)"
-            echo "📝 Logs: /var/log/tudu-api/{out,error}.log"
+            echo "=== Status ==="
             pm2 list
-            echo "🔄 Última atualização: $(date +'%Y-%m-%d %H:%M:%S')"
