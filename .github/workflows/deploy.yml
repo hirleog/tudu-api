@@ -1,10 +1,10 @@
-name: Deploy API Tudu
+name: Deploy Tudu API (Production)
 
 on:
   push:
-    branches: ['main']
+    branches: ['master']
     paths:
-      - 'api/**' # Só dispara quando houver mudanças na pasta api/
+      - 'api/**'
 
 jobs:
   deploy:
@@ -14,56 +14,56 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Configuração SSH (use a mesma chave do Tudu Professional ou crie uma específica)
+      # Configuração SSH segura
       - name: Configurar SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          echo -e "Host 89.116.73.70\n  StrictHostKeyChecking yes\n  UserKnownHostsFile ~/.ssh/known_hosts" > ~/.ssh/config
-          ssh-keyscan 89.116.73.70 >> ~/.ssh/known_hosts
+          echo -e "Host 89.116.73.70\n  StrictHostKeyChecking yes\n  LogLevel VERBOSE" > ~/.ssh/config
+          ssh-keyscan -t ed25519 89.116.73.70 >> ~/.ssh/known_hosts
 
-      # Configura Node.js
-      - name: Configurar Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      # Instala dependências e faz build (se necessário)
-      - name: Instalar dependências
+      # Build da API (se necessário)
+      - name: Build da API
         working-directory: ./api
         run: |
-          npm ci --production
-          npm prune --production
+          npm ci
+          npm run build  # Ou o comando que gera a pasta dist
+          echo "Build gerado em:"
+          ls -lh dist/
 
-      # Envia os arquivos para o servidor
-      - name: Sincronizar arquivos
+      # Deploy dos arquivos compilados
+      - name: Sincronizar build
         run: |
-          rsync -avz --delete --exclude='node_modules' \
+          rsync -avz --delete --chown=deployer:www-data \
             -e "ssh -i ~/.ssh/deploy_key" \
-            ./api/ deployer@89.116.73.70:/var/www/api-tudu/
+            ./api/dist/ deployer@89.116.73.70:/var/www/tudu-api/
 
-      - name: Configurar PM2 e reiniciar API
+      # Configuração do PM2
+      - name: Gerenciar Processo PM2
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 89.116.73.70
           username: deployer
           key: ${{ secrets.API_TUDU_SSH_KEY }}
           script: |
-            echo "=== Acessando diretório ==="
-            cd /var/www/api-tudu
+            echo "=== Estrutura de diretórios ==="
+            sudo mkdir -p /var/log/tudu-api
+            sudo chown deployer:www-data /var/log/tudu-api
 
-            echo "=== Instalando dependências no servidor ==="
+            echo "=== Instalando dependências de produção ==="
+            cd /var/www/tudu-api
             npm ci --production
 
-            echo "=== Reiniciando API ==="
-            if pm2 describe api-tudu > /dev/null; then
-              pm2 reload api-tudu --update-env
+            echo "=== Reiniciando serviço ==="
+            if pm2 describe tudu-api > /dev/null; then
+              pm2 reload tudu-api --update-env
             else
-              pm2 start npm --name "api-tudu" -- start
+              pm2 start ecosystem.config.js --env production
+              pm2 save
+              pm2 startup
             fi
 
-            echo "=== Status ==="
+            echo "=== Status final ==="
             pm2 list
-            echo "✅ API deployada em: $(date)"
+            echo "🔄 Última atualização: $(date +'%Y-%m-%d %H:%M:%S')"
