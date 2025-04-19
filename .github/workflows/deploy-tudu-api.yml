@@ -3,15 +3,12 @@ name: Deploy Tudu API (Production)
 on:
   push:
     branches: ['master', 'main']
-    # Remova ou expanda os paths para incluir outros arquivos relevantes
     paths:
-      - '**' # Isso fará com que qualquer mudança acione o deploy
-      # Ou especifique os arquivos realmente relevantes:
-      # - 'src/**'
-      # - 'package.json'
-      # - 'package-lock.json'
-      # - 'ecosystem.config.js'
-      # - '.env*'
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'ecosystem.config.js'
+      - '.env*'
 
 jobs:
   deploy:
@@ -19,65 +16,80 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
 
       # Configuração SSH
-      - name: Configurar SSH
+      - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          echo -e "Host ${{ secrets.SSH_HOST }}\n  StrictHostKeyChecking no\n  LogLevel VERBOSE" > ~/.ssh/config
-          ssh-keyscan -t ed25519 ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+          # Config file
+          cat <<EOF > ~/.ssh/config
+          Host ${{ secrets.SSH_HOST }}
+            HostName ${{ secrets.SSH_HOST }}
+            User ${{ secrets.SSH_USER }}
+            StrictHostKeyChecking no
+            IdentityFile ~/.ssh/deploy_key
+          EOF
+
+          # Known hosts
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
       # Build da aplicação
-      - name: Build do NestJS
+      - name: Build application
         run: |
           npm ci
           npm run build
-          echo "✅ Build concluído. Conteúdo de dist/:"
+          echo "Build contents:"
           ls -la dist/
 
       # Deploy
-      - name: Transferir Arquivos
+      - name: Transfer files
         run: |
-          echo "📦 Preparando arquivos para transferência..."
+          echo "Preparing files..."
           tar -czf deploy.tar.gz dist/ package.json package-lock.json ecosystem.config.js .env*
 
-          echo "🚀 Enviando arquivos..."
+          echo "Uploading files..."
           scp -i ~/.ssh/deploy_key \
             deploy.tar.gz \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
-            
-          echo "📦 Extraindo no servidor..."
+
+          echo "Extracting on server..."
           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            sudo mkdir -p /var/www/tudu-api
             sudo rm -rf /var/www/tudu-api/*
-            tar -xzf /tmp/deploy.tar.gz -C /var/www/tudu-api/
-            chown -R ${{ secrets.SSH_USER }}:www-data /var/www/tudu-api
-            echo '✅ Conteúdo após deploy:'
+            sudo tar -xzf /tmp/deploy.tar.gz -C /var/www/tudu-api/
+            sudo chown -R ${{ secrets.SSH_USER }}:www-data /var/www/tudu-api
+            echo 'Deployed files:'
             ls -la /var/www/tudu-api/
           "
 
-      # Configuração do PM2
-      - name: Configurar Serviço
+      # Server setup
+      - name: Configure server
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.API_TUDU_SSH_KEY }}
           script: |
-            echo "=== Verificando arquivos ==="
-            ls -la /var/www/tudu-api/dist/
-
-            echo "=== Instalando dependências ==="
+            echo "=== Installing dependencies ==="
             cd /var/www/tudu-api
             npm ci --production
 
-            echo "=== Reiniciando PM2 ==="
-            pm2 delete tudu-api --silent || true
+            echo "=== Restarting PM2 ==="
+            pm2 delete tudu-api || true
             pm2 start ecosystem.config.js
             pm2 save
 
-            echo "=== Status final ==="
+            echo "=== Final status ==="
             pm2 list
-            echo "🔄 Última atualização: $(date)"
+            echo "Deploy completed at $(date)"
