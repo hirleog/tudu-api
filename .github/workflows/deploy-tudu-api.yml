@@ -3,9 +3,15 @@ name: Deploy Tudu API (Production)
 on:
   push:
     branches: ['master', 'main']
+    # Remova ou expanda os paths para incluir outros arquivos relevantes
     paths:
-      - 'src/**'
-      - 'package.json'
+      - '**' # Isso fará com que qualquer mudança acione o deploy
+      # Ou especifique os arquivos realmente relevantes:
+      # - 'src/**'
+      # - 'package.json'
+      # - 'package-lock.json'
+      # - 'ecosystem.config.js'
+      # - '.env*'
 
 jobs:
   deploy:
@@ -15,14 +21,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Configuração SSH robusta
+      # Configuração SSH
       - name: Configurar SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          echo -e "Host 89.116.73.70\n  StrictHostKeyChecking yes\n  LogLevel VERBOSE" > ~/.ssh/config
-          ssh-keyscan -t ed25519 89.116.73.70 >> ~/.ssh/known_hosts
+          echo -e "Host ${{ secrets.SSH_HOST }}\n  StrictHostKeyChecking no\n  LogLevel VERBOSE" > ~/.ssh/config
+          ssh-keyscan -t ed25519 ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
       # Build da aplicação
       - name: Build do NestJS
@@ -32,22 +38,22 @@ jobs:
           echo "✅ Build concluído. Conteúdo de dist/:"
           ls -la dist/
 
-      # Deploy com verificação em tempo real
+      # Deploy
       - name: Transferir Arquivos
         run: |
           echo "📦 Preparando arquivos para transferência..."
-          tar -czf deploy.tar.gz dist/ package.json
+          tar -czf deploy.tar.gz dist/ package.json package-lock.json ecosystem.config.js .env*
 
           echo "🚀 Enviando arquivos..."
           scp -i ~/.ssh/deploy_key \
             deploy.tar.gz \
-            deployer@89.116.73.70:/tmp/
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
             
           echo "📦 Extraindo no servidor..."
-          ssh -i ~/.ssh/deploy_key deployer@89.116.73.70 "
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             sudo rm -rf /var/www/tudu-api/*
             tar -xzf /tmp/deploy.tar.gz -C /var/www/tudu-api/
-            chown -R deployer:www-data /var/www/tudu-api
+            chown -R ${{ secrets.SSH_USER }}:www-data /var/www/tudu-api
             echo '✅ Conteúdo após deploy:'
             ls -la /var/www/tudu-api/
           "
@@ -56,8 +62,8 @@ jobs:
       - name: Configurar Serviço
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: 89.116.73.70
-          username: deployer
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.API_TUDU_SSH_KEY }}
           script: |
             echo "=== Verificando arquivos ==="
