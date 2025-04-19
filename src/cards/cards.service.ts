@@ -66,7 +66,7 @@ export class CardsService {
       candidaturas: card.Candidatura.map((candidatura) => ({
         id_candidatura: 0,
         // prestador_id: candidatura.prestador_id,
-        valor_negociado: candidatura.valor_negociado || null,
+        valor_negociado: candidatura.valor_negociado || '',
         horario_negociado: candidatura.horario_negociado || null,
         data_candidatura: candidatura.data_candidatura,
         status: candidatura.status || false,

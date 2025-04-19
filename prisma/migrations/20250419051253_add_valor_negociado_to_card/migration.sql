@@ -52,7 +52,7 @@ CREATE TABLE `Candidatura` (
     `id_candidatura` INTEGER NOT NULL AUTO_INCREMENT,
     `id_pedido` VARCHAR(191) NOT NULL,
     `prestador_id` INTEGER NOT NULL,
-    `valor_negociado` DOUBLE NULL,
+    `valor_negociado` VARCHAR(191) NULL,
     `horario_negociado` VARCHAR(191) NULL,
     `status` VARCHAR(191) NULL,
     `data_candidatura` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -88,15 +88,3 @@ CREATE TABLE `Card` (
 
     PRIMARY KEY (`id_pedido`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- AddForeignKey
-ALTER TABLE `Candidatura` ADD CONSTRAINT `Candidatura_id_pedido_fkey` FOREIGN KEY (`id_pedido`) REFERENCES `Card`(`id_pedido`) ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE `Candidatura` ADD CONSTRAINT `Candidatura_prestador_id_fkey` FOREIGN KEY (`prestador_id`) REFERENCES `Prestador`(`id_prestador`) ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE `Card` ADD CONSTRAINT `Card_id_cliente_fkey` FOREIGN KEY (`id_cliente`) REFERENCES `Cliente`(`id_cliente`) ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE `Card` ADD CONSTRAINT `Card_id_prestador_fkey` FOREIGN KEY (`id_prestador`) REFERENCES `Prestador`(`id_prestador`) ON DELETE SET NULL ON UPDATE CASCADE;
