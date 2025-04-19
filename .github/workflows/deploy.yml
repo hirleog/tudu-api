@@ -23,47 +23,63 @@ jobs:
           echo -e "Host 89.116.73.70\n  StrictHostKeyChecking yes\n  LogLevel VERBOSE" > ~/.ssh/config
           ssh-keyscan -t ed25519 89.116.73.70 >> ~/.ssh/known_hosts
 
-      # Build da API (se necessário)
+      # Build da API
       - name: Build da API
         working-directory: ./api
         run: |
           npm ci
-          npm run build  # Ou o comando que gera a pasta dist
-          echo "Build gerado em:"
-          ls -lh dist/
+          npm run build
+          echo "✅ Build concluído. Entrypoint:"
+          ls -la dist/main.js || { echo "❌ Entrypoint não encontrado"; exit 1; }
 
-      # Deploy dos arquivos compilados
+      # Deploy
       - name: Sincronizar build
         run: |
-          rsync -avz --delete --chown=deployer:www-data \
+          rsync -avz \
+            --progress \
+            --delete \
+            --chown=deployer:www-data \
             -e "ssh -i ~/.ssh/deploy_key" \
             ./api/dist/ deployer@89.116.73.70:/var/www/tudu-api/
 
       # Configuração do PM2
-      - name: Gerenciar Processo PM2
+      - name: Configurar PM2
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: 89.116.73.70
           username: deployer
           key: ${{ secrets.API_TUDU_SSH_KEY }}
           script: |
-            echo "=== Estrutura de diretórios ==="
+            echo "=== Criando estrutura de diretórios ==="
             sudo mkdir -p /var/log/tudu-api
-            sudo chown deployer:www-data /var/log/tudu-api
+            sudo chown -R deployer:www-data /var/log/tudu-api /var/www/tudu-api
 
-            echo "=== Instalando dependências de produção ==="
-            cd /var/www/tudu-api
-            npm ci --production
+            echo "=== Criando ecosystem.config.js ==="
+            cat <<EOF > /var/www/tudu-api/ecosystem.config.js
+            module.exports = {
+              apps: [{
+                name: "tudu-api",
+                script: "./main.js",
+                cwd: "/var/www/tudu-api",
+                env: {
+                  NODE_ENV: "production",
+                  PORT: 3000
+                },
+                error_file: "/var/log/tudu-api/error.log",
+                out_file: "/var/log/tudu-api/out.log"
+              }]
+            }
+            EOF
 
             echo "=== Reiniciando serviço ==="
-            if pm2 describe tudu-api > /dev/null; then
-              pm2 reload tudu-api --update-env
-            else
-              pm2 start ecosystem.config.js --env production
-              pm2 save
-              pm2 startup
-            fi
+            cd /var/www/tudu-api
+            npm ci --production
+            pm2 delete tudu-api --silent || true
+            pm2 start ecosystem.config.js
+            pm2 save
+            pm2 startup
 
             echo "=== Status final ==="
             pm2 list
             echo "🔄 Última atualização: $(date +'%Y-%m-%d %H:%M:%S')"
+            echo "📌 Entrypoint confirmado: /var/www/tudu-api/main.js"
