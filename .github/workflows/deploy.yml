@@ -1,0 +1,70 @@
+name: Deploy API Tudu
+
+on:
+  push:
+    branches: ['main']
+    paths:
+      - 'api/**' # Só dispara quando houver mudanças na pasta api/
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Configuração SSH (use a mesma chave do Tudu Professional ou crie uma específica)
+      - name: Configurar SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo -e "Host 89.116.73.70\n  StrictHostKeyChecking yes\n  UserKnownHostsFile ~/.ssh/known_hosts" > ~/.ssh/config
+          ssh-keyscan 89.116.73.70 >> ~/.ssh/known_hosts
+
+      # Configura Node.js
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Instala dependências e faz build (se necessário)
+      - name: Instalar dependências
+        working-directory: ./api
+        run: |
+          npm ci --production
+          npm prune --production
+
+      # Envia os arquivos para o servidor
+      - name: Sincronizar arquivos
+        run: |
+          rsync -avz --delete --exclude='node_modules' \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ./api/ deployer@89.116.73.70:/var/www/api-tudu/
+
+      # Configuração no servidor
+      - name: Configurar PM2 e reiniciar API
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 89.116.73.70
+          username: deployer
+          key: ${{ secrets.API_TUDU_SSH_KEY }}
+          script: |
+            echo "=== Acessando diretório ==="
+            cd /var/www/api-tudu
+
+            echo "=== Instalando dependências no servidor ==="
+            npm ci --production
+
+            echo "=== Reiniciando API ==="
+            if pm2 describe api-tudu > /dev/null; then
+              pm2 reload api-tudu --update-env
+            else
+              pm2 start npm --name "api-tudu" -- start
+            fi
+
+            echo "=== Status ==="
+            pm2 list
+            echo "✅ API deployada em: $(date)"
