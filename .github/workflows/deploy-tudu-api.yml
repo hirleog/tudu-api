@@ -4,9 +4,8 @@ on:
   push:
     branches: ['master', 'main']
     paths:
-      - 'src/**' # Monitora mudanças nos arquivos fonte
-      - 'package.json' # Se houver mudanças nas dependências
-      - 'nest-cli.json' # Configurações do NestJS
+      - 'src/**'
+      - 'package.json'
 
 jobs:
   deploy:
@@ -16,35 +15,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Configuração SSH
+      # Configuração SSH robusta
       - name: Configurar SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          echo -e "Host 89.116.73.70\n  StrictHostKeyChecking yes" > ~/.ssh/config
-          ssh-keyscan 89.116.73.70 >> ~/.ssh/known_hosts
+          echo -e "Host 89.116.73.70\n  StrictHostKeyChecking yes\n  LogLevel VERBOSE" > ~/.ssh/config
+          ssh-keyscan -t ed25519 89.116.73.70 >> ~/.ssh/known_hosts
 
-      # Instalação e Build
-      - name: Instalar e Buildar
+      # Build da aplicação
+      - name: Build do NestJS
         run: |
           npm ci
           npm run build
-          echo "✅ Build concluído. Arquivos em dist/:"
+          echo "✅ Build concluído. Conteúdo de dist/:"
           ls -la dist/
 
-      # Deploy
-      - name: Sincronizar arquivos
+      # Deploy com verificação em tempo real
+      - name: Transferir Arquivos
         run: |
-          rsync -avz \
-            --progress \
-            --delete \
-            --exclude='node_modules' \
-            --exclude='.env' \
-            -e "ssh -i ~/.ssh/deploy_key" \
-            ./dist/ \
-            ./package.json \
-            deployer@89.116.73.70:/var/www/tudu-api/
+          echo "📦 Preparando arquivos para transferência..."
+          tar -czf deploy.tar.gz dist/ package.json
+
+          echo "🚀 Enviando arquivos..."
+          scp -i ~/.ssh/deploy_key \
+            deploy.tar.gz \
+            deployer@89.116.73.70:/tmp/
+            
+          echo "📦 Extraindo no servidor..."
+          ssh -i ~/.ssh/deploy_key deployer@89.116.73.70 "
+            sudo rm -rf /var/www/tudu-api/*
+            tar -xzf /tmp/deploy.tar.gz -C /var/www/tudu-api/
+            chown -R deployer:www-data /var/www/tudu-api
+            echo '✅ Conteúdo após deploy:'
+            ls -la /var/www/tudu-api/
+          "
 
       # Configuração do PM2
       - name: Configurar Serviço
@@ -54,32 +60,18 @@ jobs:
           username: deployer
           key: ${{ secrets.API_TUDU_SSH_KEY }}
           script: |
-            echo "=== Preparando ambiente ==="
+            echo "=== Verificando arquivos ==="
+            ls -la /var/www/tudu-api/dist/
+
+            echo "=== Instalando dependências ==="
             cd /var/www/tudu-api
             npm ci --production
 
-            echo "=== Configurando PM2 ==="
-            cat <<EOF > ecosystem.config.js
-            module.exports = {
-              apps: [{
-                name: "tudu-api",
-                script: "./main.js",
-                cwd: "/var/www/tudu-api",
-                env: {
-                  NODE_ENV: "production",
-                  PORT: 3000
-                },
-                error_file: "/var/log/tudu-api/error.log",
-                out_file: "/var/log/tudu-api/out.log"
-              }]
-            }
-            EOF
-
-            echo "=== Reiniciando API ==="
+            echo "=== Reiniciando PM2 ==="
             pm2 delete tudu-api --silent || true
             pm2 start ecosystem.config.js
             pm2 save
-            pm2 startup
 
-            echo "=== Status ==="
+            echo "=== Status final ==="
             pm2 list
+            echo "🔄 Última atualização: $(date)"
