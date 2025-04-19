@@ -9,7 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -23,18 +23,34 @@ jobs:
           echo -e "Host 89.116.73.70\n  StrictHostKeyChecking yes\n  LogLevel VERBOSE" > ~/.ssh/config
           ssh-keyscan -t ed25519 89.116.73.70 >> ~/.ssh/known_hosts
 
-      # Build da API
+      # Build da API com validação rigorosa
       - name: Build da API
         working-directory: ./api
         run: |
           npm ci
           npm run build
-          echo "✅ Build concluído. Entrypoint:"
-          ls -la dist/main.js || { echo "❌ Entrypoint não encontrado"; exit 1; }
 
-      # Deploy
+          echo "=== Verificação do Build ==="
+          if [ ! -f "dist/main.js" ]; then
+            echo "❌ ERRO: main.js não encontrado em dist/"
+            echo "Conteúdo de dist/:"
+            ls -la dist/
+            echo "Procurando arquivos JavaScript:"
+            find dist/ -name "*.js"
+            exit 1
+          fi
+
+          echo "✅ Build validado:"
+          ls -la dist/main.js
+          echo "ENTRY_POINT=main.js" >> $GITHUB_ENV
+
+      # Deploy com verificação em tempo real
       - name: Sincronizar build
         run: |
+          echo "📦 Listando arquivos locais:"
+          ls -la ./api/dist/
+
+          echo "🚀 Enviando arquivos..."
           rsync -avz \
             --progress \
             --delete \
@@ -42,7 +58,10 @@ jobs:
             -e "ssh -i ~/.ssh/deploy_key" \
             ./api/dist/ deployer@89.116.73.70:/var/www/tudu-api/
 
-      # Configuração do PM2
+          echo "🔍 Verificação remota:"
+          ssh -i ~/.ssh/deploy_key deployer@89.116.73.70 "ls -la /var/www/tudu-api/"
+
+      # Configuração do PM2 com validação
       - name: Configurar PM2
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -50,12 +69,26 @@ jobs:
           username: deployer
           key: ${{ secrets.API_TUDU_SSH_KEY }}
           script: |
-            echo "=== Criando estrutura de diretórios ==="
+            echo "=== Validação pré-deploy ==="
+            if [ ! -f "/var/www/tudu-api/main.js" ]; then
+              echo "❌ ERRO CRÍTICO: main.js não encontrado no servidor!"
+              echo "Conteúdo do diretório:"
+              ls -la /var/www/tudu-api/
+              echo "Arquivos existentes:"
+              find /var/www/tudu-api -type f
+              exit 1
+            fi
+
+            echo "=== Configurando ambiente ==="
             sudo mkdir -p /var/log/tudu-api
             sudo chown -R deployer:www-data /var/log/tudu-api /var/www/tudu-api
 
-            echo "=== Criando ecosystem.config.js ==="
-            cat <<EOF > /var/www/tudu-api/ecosystem.config.js
+            echo "=== Instalando dependências ==="
+            cd /var/www/tudu-api
+            npm ci --production --ignore-scripts
+
+            echo "=== Configurando PM2 ==="
+            cat <<EOF > ecosystem.config.js
             module.exports = {
               apps: [{
                 name: "tudu-api",
@@ -66,20 +99,20 @@ jobs:
                   PORT: 3000
                 },
                 error_file: "/var/log/tudu-api/error.log",
-                out_file: "/var/log/tudu-api/out.log"
+                out_file: "/var/log/tudu-api/out.log",
+                time: true
               }]
             }
             EOF
 
             echo "=== Reiniciando serviço ==="
-            cd /var/www/tudu-api
-            npm ci --production
             pm2 delete tudu-api --silent || true
             pm2 start ecosystem.config.js
             pm2 save
             pm2 startup
 
-            echo "=== Status final ==="
+            echo "=== Verificação final ==="
+            echo "📌 Entrypoint: $(realpath /var/www/tudu-api/main.js)"
+            echo "📝 Logs: /var/log/tudu-api/{out,error}.log"
             pm2 list
             echo "🔄 Última atualização: $(date +'%Y-%m-%d %H:%M:%S')"
-            echo "📌 Entrypoint confirmado: /var/www/tudu-api/main.js"
