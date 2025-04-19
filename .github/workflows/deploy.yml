@@ -44,7 +44,6 @@ jobs:
             -e "ssh -i ~/.ssh/deploy_key" \
             ./api/ deployer@89.116.73.70:/var/www/api-tudu/
 
-      # Configuração no servidor
       - name: Configurar PM2 e reiniciar API
         uses: appleboy/ssh-action@v1.0.0
         with:
