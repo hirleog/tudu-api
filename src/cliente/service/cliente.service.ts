@@ -44,7 +44,7 @@ export class ClienteService {
       });
 
       if (existingCpf) {
-        throw new Error('O CPF já está em uso.');
+        throw new Error('O CPF já está em usoo.');
       }
     }
 
