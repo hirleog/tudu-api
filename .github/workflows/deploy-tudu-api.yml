@@ -20,7 +20,7 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      # Configuração SSH robusta
+      # Configuração SSH
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
@@ -36,79 +36,69 @@ jobs:
             ConnectTimeout 15
           EOF
 
-          # Adiciona fingerprint manualmente (substitua pela do seu servidor)
-          echo "${{ secrets.SSH_HOST }} ssh-rsa AAAAB3NzaC1yc2E..." >> ~/.ssh/known_hosts
+          echo "${{ secrets.SSH_HOST }} ssh-rsa AAA..." >> ~/.ssh/known_hosts
 
-      # Build com verificações
+      # Build da aplicação
       - name: Build application
         run: |
           npm ci
           npm run build
-          [ -d "dist" ] || { echo "❌ Build failed - dist folder missing"; exit 1; }
-          [ -f "ecosystem.config.js" ] || { echo "❌ Missing ecosystem.config.js"; exit 1; }
+          [ -d "dist" ] || { echo "❌ Build failed"; exit 1; }
 
-      # Criação do pacote com tratamento de arquivos opcionais
+      # Criação do pacote sem falhar se .env não existir
       - name: Create deployment package
         run: |
           # Lista de arquivos obrigatórios
           FILES="dist/ package.json package-lock.json ecosystem.config.js prisma/"
 
           # Adiciona .env apenas se existir
-          [ -f ".env" ] && FILES="$FILES .env" || echo "ℹ️ .env not included - this is normal if using secrets"
+          [ -f ".env" ] && FILES="$FILES .env" || echo "ℹ️ .env não incluído - será criado no servidor"
 
           # Cria o pacote
           tar -czvf deploy.tar.gz $FILES
 
-          # Verificação final
+          # Verificação
           [ -f "deploy.tar.gz" ] || { echo "❌ Failed to create package"; exit 1; }
-          echo "✅ Package contents:"
+          echo "✅ Conteúdo do pacote:"
           tar -tzf deploy.tar.gz
 
-      # Deploy completo
+      # Deploy no servidor
       - name: Deploy to server
         run: |
           scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
 
           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -eo pipefail
-            echo '### 🧹 Cleaning old deployment...'
+            echo '1. 🧹 Limpando deploy anterior...'
             sudo rm -rf /var/www/tudu-api/*
             sudo mkdir -p /var/www/tudu-api
             
-            echo '### 📦 Extracting files...'
+            echo '2. 📦 Extraindo arquivos...'
             sudo tar -xzf /tmp/deploy.tar.gz -C /var/www/tudu-api
-            sudo chown -R ${{ secrets.SSH_USER }}:www-data /var/www/tudu-api
             
-            # Cria .env a partir de secrets se necessário
-            if [ ! -f "/var/www/tudu-api/.env" ]; then
-              echo '### 🛠 Creating .env from secrets...'
-              cat <<ENV > /var/www/tudu-api/.env
-              DATABASE_URL=${{ secrets.DATABASE_URL }}
-              JWT_SECRET=${{ secrets.JWT_SECRET }}
-              # Adicione outras variáveis aqui
-              ENV
-              chmod 600 /var/www/tudu-api/.env
-            fi
+            echo '3. 🔑 Configurando .env...'
+            cat <<EOF > /var/www/tudu-api/.env
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            # Adicione outras variáveis aqui
+            EOF
+            chmod 600 /var/www/tudu-api/.env
             
-            echo '### ⚙️ Installing dependencies...'
+            echo '4. ⚙️ Instalando dependências...'
             cd /var/www/tudu-api
             npm ci --production
             
-            echo '### 🗃️ Running database migrations...'
+            echo '5. 🗃️ Executando migrações...'
             npx prisma generate
             npx prisma migrate deploy
             
-            echo '### 🚀 Starting application...'
-            cd /var/www/tudu-api
+            echo '6. 🚀 Iniciando aplicação...'
             pm2 delete tudu-api --silent || true
             pm2 start ecosystem.config.js
             pm2 save
             
-            echo '### ✅ Verification...'
-            echo 'Arquivos no diretório:'
-            ls -la /var/www/tudu-api
-            echo '\nStatus PM2:'
+            echo '7. ✅ Verificando...'
             pm2 list
-            echo '\nLogs:'
-            pm2 logs tudu-api --lines 5 --nostream
+            echo 'Saúde da API:'
+            curl -s http://localhost:3000/health || { echo '❌ Health check failed'; exit 1; }
           "
