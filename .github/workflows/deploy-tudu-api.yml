@@ -1,8 +1,109 @@
-name: Deploy Tudu API (Production)
+# name: Deploy Tudu API (Production)
+
+# on:
+#   push:
+#     branches: ['master', 'main']
+
+# jobs:
+#   deploy:
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 30
+
+#     steps:
+#       - uses: actions/checkout@v4
+#         with:
+#           fetch-depth: 0
+
+#       - name: Setup Node.js
+#         uses: actions/setup-node@v3
+#         with:
+#           node-version: '18'
+#           cache: 'npm'
+
+#       - name: Configure SSH
+#         run: |
+#           mkdir -p ~/.ssh
+#           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
+#           chmod 600 ~/.ssh/deploy_key
+
+#           echo "Host ${{ secrets.SSH_HOST }}" > ~/.ssh/config
+#           echo "  HostName ${{ secrets.SSH_HOST }}" >> ~/.ssh/config
+#           echo "  User ${{ secrets.SSH_USER }}" >> ~/.ssh/config
+#           echo "  IdentityFile ~/.ssh/deploy_key" >> ~/.ssh/config
+#           echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+#           echo "  ConnectTimeout 15" >> ~/.ssh/config
+
+#           chmod 600 ~/.ssh/config
+
+#       - name: Build application
+#         run: |
+#           npm ci
+#           npm run build
+#           [ -d "dist" ] || { echo "::error::❌ Build failed"; exit 1; }
+
+#       - name: Create deployment package
+#         run: |
+#           tar -czvf deploy.tar.gz \
+#             dist/ \
+#             package.json \
+#             package-lock.json \
+#             ecosystem.config.js \
+#             prisma/
+#           [ -f "deploy.tar.gz" ] || { echo "::error::❌ Failed to create package"; exit 1; }
+
+#       - name: Deploy to server
+#         run: |
+#           scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
+
+#           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+#             set -eo pipefail
+
+#             # Usa o diretório home do usuário para evitar precisar de sudo
+#             DEPLOY_DIR=\"/home/${{ secrets.SSH_USER }}/tudu-api\"
+
+#             # Cria diretório se não existir
+#             mkdir -p \$DEPLOY_DIR
+
+#             # Limpa apenas arquivos essenciais (sem node_modules)
+#             rm -rf \$DEPLOY_DIR/dist/* \$DEPLOY_DIR/package.json \$DEPLOY_DIR/ecosystem.config.js
+
+#             # Extrai os arquivos
+#             tar -xzf /tmp/deploy.tar.gz -C \$DEPLOY_DIR
+
+#             cd \$DEPLOY_DIR
+
+#             # Configura .env
+#             cat <<EOF > .env
+#             DATABASE_URL='${{ secrets.DATABASE_URL }}'
+#             JWT_SECRET='${{ secrets.JWT_SECRET }}'
+#             NODE_ENV=production
+#             PORT=3000
+#             EOF
+#             chmod 600 .env
+
+#             # Instala dependências localmente
+#             npm ci --production
+
+#             # Configuração do Prisma
+#             npx prisma generate
+#             npx prisma migrate deploy
+
+#             # Inicia a aplicação
+#             pm2 delete tudu-api --silent || true
+#             pm2 start ecosystem.config.js --update-env
+#             pm2 save
+
+#             # Verificação
+#             echo '=== Status ==='
+#             pm2 list
+#             curl -sSf http://localhost:3000/health
+#           "
+
+name: Deploy Tudu API
 
 on:
   push:
-    branches: ['master', 'main']
+    branches: [main]
 
 jobs:
   deploy:
@@ -11,35 +112,30 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
-          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: |
+          npm run build
+          [ -d "dist" ] || { echo "Build failed"; exit 1; }
 
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-
-          echo "Host ${{ secrets.SSH_HOST }}" > ~/.ssh/config
+          echo "Host ${{ secrets.SSH_HOST }}" >> ~/.ssh/config
           echo "  HostName ${{ secrets.SSH_HOST }}" >> ~/.ssh/config
           echo "  User ${{ secrets.SSH_USER }}" >> ~/.ssh/config
           echo "  IdentityFile ~/.ssh/deploy_key" >> ~/.ssh/config
           echo "  StrictHostKeyChecking no" >> ~/.ssh/config
-          echo "  ConnectTimeout 15" >> ~/.ssh/config
-
-          chmod 600 ~/.ssh/config
-
-      - name: Build application
-        run: |
-          npm ci
-          npm run build
-          [ -d "dist" ] || { echo "::error::❌ Build failed"; exit 1; }
 
       - name: Create deployment package
         run: |
@@ -47,33 +143,31 @@ jobs:
             dist/ \
             package.json \
             package-lock.json \
-            ecosystem.config.js \
-            prisma/
-          [ -f "deploy.tar.gz" ] || { echo "::error::❌ Failed to create package"; exit 1; }
+            prisma/ \
+            ecosystem.config.js
+          [ -f "deploy.tar.gz" ] || { echo "Package failed"; exit 1; }
 
-      - name: Deploy to server
+      - name: Deploy and Migrate
         run: |
           scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
 
           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
-            set -eo pipefail
-            
-            # Usa o diretório home do usuário para evitar precisar de sudo
-            DEPLOY_DIR=\"/home/${{ secrets.SSH_USER }}/tudu-api\"
-            
-            # Cria diretório se não existir
+            set -e
+
+            # 1. Prepare environment
+            DEPLOY_DIR='/var/www/tudu-api'
             mkdir -p \$DEPLOY_DIR
             
-            # Limpa apenas arquivos essenciais (sem node_modules)
-            rm -rf \$DEPLOY_DIR/dist/* \$DEPLOY_DIR/package.json \$DEPLOY_DIR/ecosystem.config.js
-            
-            # Extrai os arquivos
+            # 2. Clean and extract
+            rm -rf \$DEPLOY_DIR/dist \$DEPLOY_DIR/prisma \$DEPLOY_DIR/package*.json
             tar -xzf /tmp/deploy.tar.gz -C \$DEPLOY_DIR
             
+            # 3. Install and setup
             cd \$DEPLOY_DIR
+            npm ci --production
             
-            # Configura .env
-            cat <<EOF > .env
+            # 4. Environment setup
+            cat > .env <<EOF
             DATABASE_URL='${{ secrets.DATABASE_URL }}'
             JWT_SECRET='${{ secrets.JWT_SECRET }}'
             NODE_ENV=production
@@ -81,20 +175,25 @@ jobs:
             EOF
             chmod 600 .env
             
-            # Instala dependências localmente
-            npm ci --production
-            
-            # Configuração do Prisma
+            # 5. Prisma migrations
+            export PATH=\"\$PATH:\$(npm bin)\"
             npx prisma generate
             npx prisma migrate deploy
             
-            # Inicia a aplicação
-            pm2 delete tudu-api --silent || true
-            pm2 start ecosystem.config.js --update-env
+            # 6. PM2 setup
+            npm install pm2 -g
+            pm2 delete all || true
+            pm2 start ecosystem.config.js
             pm2 save
-            
-            # Verificação
-            echo '=== Status ==='
-            pm2 list
-            curl -sSf http://localhost:3000/health
+            pm2 startup
+          "
+
+      - name: Verify Deployment
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            curl -sSf http://localhost:3000/health || {
+              echo '::error::Deployment failed';
+              pm2 logs;
+              exit 1;
+            }
           "
