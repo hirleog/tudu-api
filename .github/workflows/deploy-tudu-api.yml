@@ -3,6 +3,10 @@ name: Deploy Tudu API (Production)
 on:
   push:
     branches: ['master', 'main']
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'prisma/**'
 
 jobs:
   deploy:
@@ -19,50 +23,75 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      # Configuração SSH com tratamento de erros
+      # Configuração SSH
       - name: Configure SSH
         run: |
-          set -e  # Faz o script falhar imediatamente em caso de erro
-          echo "Configuring SSH..."
-
           mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-
-          # Escreve a chave SSH com verificação
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          echo -e "Host ${{ secrets.SSH_HOST }}\n  HostName ${{ secrets.SSH_HOST }}\n  User ${{ secrets.SSH_USER }}\n  IdentityFile ~/.ssh/deploy_key" > ~/.ssh/config
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-          # Verifica se a chave foi escrita corretamente
-          if [ ! -s ~/.ssh/deploy_key ]; then
-            echo "Error: SSH key file is empty!"
-            exit 1
-          fi
-
-          # Configuração do SSH
-          cat <<EOF > ~/.ssh/config
-          Host ${{ secrets.SSH_HOST || '89.116.73.70' }}
-            HostName ${{ secrets.SSH_HOST || '89.116.73.70' }}
-            User ${{ secrets.SSH_USER || 'deployer' }}
-            StrictHostKeyChecking no
-            IdentityFile ~/.ssh/deploy_key
-            LogLevel ERROR
-          EOF
-
-          chmod 600 ~/.ssh/config
-
-          # Scan do host com tratamento de erro
-          echo "Scanning host keys..."
-          ssh-keyscan -H "${{ secrets.SSH_HOST || '89.116.73.70' }}" >> ~/.ssh/known_hosts 2>&1
-
-          echo "SSH configuration complete!"
-          echo "Testing connection..."
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=5 ${{ secrets.SSH_USER || 'deployer' }}@${{ secrets.SSH_HOST || '89.116.73.70' }} echo "SSH connection test successful!"
-
-      # Build da aplicação
-      - name: Build application
+      # Build e validação
+      - name: Install, Build & Validate
         run: |
           npm ci
           npm run build
-          ls -la dist/
 
-      # Resto do seu workflow...
+          # Validações críticas
+          [ -d "dist" ] || { echo "Error: Build failed - dist/ missing"; exit 1; }
+          [ -f "prisma/schema.prisma" ] || { echo "Error: prisma/schema.prisma missing"; exit 1; }
+
+      # Deploy com Prisma
+      - name: Deploy Files & Migrate
+        run: |
+          # Cria pacote otimizado
+          tar -czf deploy.tar.gz \
+            dist/ \
+            package.json \
+            package-lock.json \
+            ecosystem.config.js \
+            .env \
+            prisma/
+
+          # Transfere e executa no servidor
+          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
+
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            # Extrai arquivos
+            sudo rm -rf /var/www/tudu-api/*
+            tar -xzf /tmp/deploy.tar.gz -C /var/www/tudu-api/
+            
+            # Configura ambiente
+            cd /var/www/tudu-api
+            npm ci --production
+            
+            # Executa migrações do Prisma
+            npx prisma generate
+            npx prisma migrate deploy
+            
+            # Reinicia PM2
+            pm2 delete tudu-api --silent || true
+            pm2 start ecosystem.config.js
+            pm2 save
+          "
+
+      # Validação pós-deploy
+      - name: Verify Deployment
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.API_TUDU_SSH_KEY }}
+          script: |
+            echo "=== Deployment Verification ==="
+            ls -la /var/www/tudu-api/dist/
+
+            echo "=== Prisma Status ==="
+            npx prisma migrate status
+
+            echo "=== PM2 Status ==="
+            pm2 list
+
+            echo "=== API Health Check ==="
+            curl -s http://localhost:3000/health || { echo "Health check failed"; exit 1; }

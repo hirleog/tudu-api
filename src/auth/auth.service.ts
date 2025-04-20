@@ -48,6 +48,7 @@ export class AuthService {
       role: 'cliente', // Identifica o tipo de usuário
     };
     return {
+      teste: 'teste',
       access_token: this.jwtService.sign(payload),
     };
   }
@@ -58,6 +59,7 @@ export class AuthService {
       role: 'prestador', // Identifica o tipo de usuário
     };
     return {
+      teste: 'teste',
       role: 'prestador', // Identifica o tipo de usuário
       access_token: this.jwtService.sign(payload),
     };
