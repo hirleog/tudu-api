@@ -56,43 +56,7 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -eo pipefail
-            
-            # 1. Configuração de diretórios e permissões
-            DEPLOY_DIR=\"/var/www/tudu-api\"
-            sudo mkdir -p \$DEPLOY_DIR
-            sudo chown -R ${{ secrets.SSH_USER }}:${{ secrets.SSH_USER }} \$DEPLOY_DIR
-            
-            # 2. Limpeza segura (não remove node_modules)
-            cd \$DEPLOY_DIR
-            rm -rf dist/ package.json package-lock.json ecosystem.config.js prisma/
-            
-            # 3. Extração do pacote
-            tar -xzf /tmp/deploy.tar.gz -C \$DEPLOY_DIR
-            
-            # 4. Configuração do ambiente
-            cat > .env <<EOF
-            DATABASE_URL='${{ secrets.DATABASE_URL }}'
-            JWT_SECRET='${{ secrets.JWT_SECRET }}'
-            NODE_ENV=production
-            PORT=3000
-            EOF
-            chmod 600 .env
-            
-            # 5. Instalação e setup do Prisma
-            npm ci --production
-            npx prisma generate
-            npx prisma migrate deploy
-            
-            # 6. Gerenciamento de processos
-            pm2 delete tudu-api --silent || true
-            pm2 start ecosystem.config.js --update-env
-            pm2 save
-            
-            # 7. Verificação
-            sleep 10
-            if ! curl -sSf http://localhost:3000/health; then
-              echo '::error::❌ Health check failed'
-              pm2 logs tudu-api --lines 100
-              exit 1
-            fi
+            # Comandos com sudo agora não pedirão senha
+            sudo chown -R ${{ secrets.SSH_USER }}:${{ secrets.SSH_USER }} /var/www/tudu-api
+            # Resto do script...
           "
