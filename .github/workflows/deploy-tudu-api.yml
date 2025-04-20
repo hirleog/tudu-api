@@ -58,28 +58,14 @@ jobs:
           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -eo pipefail
             
-            # Verifica se o Node.js está instalado (sem usar sudo)
-            if ! command -v node &> /dev/null; then
-              echo 'Instalando Node.js...'
-              # Método alternativo sem sudo
-              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
-              export NVM_DIR=\"\$HOME/.nvm\"
-              [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\"
-              nvm install 18
-              nvm use 18
-            fi
-            
-            # Instala o PM2 globalmente (sem sudo)
-            if ! command -v pm2 &> /dev/null; then
-              echo 'Instalando PM2...'
-              npm install -g pm2
-              export PATH=\"\$PATH:\$HOME/.npm-global/bin\"
-            fi
+            # Corrige permissões antes de qualquer operação
+            sudo chown -R ${{ secrets.SSH_USER }}:${{ secrets.SSH_USER }} /var/www/tudu-api
+            sudo chmod -R 755 /var/www/tudu-api
             
             cd /var/www/tudu-api
             
-            # Limpa o diretório
-            rm -rf ./*
+            # Remove apenas o necessário (evita problemas com node_modules)
+            rm -rf dist/* package.json package-lock.json ecosystem.config.js prisma
             
             # Extrai os arquivos
             tar -xzf /tmp/deploy.tar.gz -C .
@@ -93,14 +79,15 @@ jobs:
             EOF
             chmod 600 .env
             
-            # Instala dependências
+            # Instala dependências (força limpeza do cache se necessário)
+            npm cache clean --force
             npm ci --production
             
             # Configuração do Prisma
             npx prisma generate
             npx prisma migrate deploy
             
-            # Inicia a aplicação
+            # Reinicia a aplicação
             pm2 delete tudu-api --silent || true
             pm2 start ecosystem.config.js --update-env
             pm2 save
@@ -109,12 +96,10 @@ jobs:
             # Verificação final
             echo '=== Status do PM2 ==='
             pm2 list
-            echo '=== Últimos logs ==='
-            pm2 logs tudu-api --lines 10 --nostream
             echo '=== Health Check ==='
             curl -sSf http://localhost:3000/health || {
               echo '::error::❌ Health check failed'
-              pm2 logs tudu-api --lines 20
+              pm2 logs tudu-api --lines 50
               exit 1
             }
           "
