@@ -20,13 +20,20 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      # Configuração SSH
+      # Configuração SSH robusta
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
+          # Verifica se os secrets existem
+          if [ -z "${{ secrets.SSH_HOST }}" ] || [ -z "${{ secrets.SSH_USER }}" ]; then
+            echo "❌ SSH_HOST ou SSH_USER não configurados"
+            exit 1
+          fi
+
+          # Config file com tratamento de erros
           cat <<EOF > ~/.ssh/config
           Host ${{ secrets.SSH_HOST }}
             HostName ${{ secrets.SSH_HOST }}
@@ -36,56 +43,73 @@ jobs:
             ConnectTimeout 15
           EOF
 
-          echo "${{ secrets.SSH_HOST }} ssh-rsa AAA..." >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/config
+
+          # Adiciona fingerprint (substitua AAA... pela do seu servidor)
+          echo "${{ secrets.SSH_HOST }} ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAA..." >> ~/.ssh/known_hosts
+
+          # Teste de conexão
+          ssh -o BatchMode=yes -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} exit || {
+            echo "❌ Falha na conexão SSH";
+            exit 1;
+          }
 
       # Build da aplicação
       - name: Build application
         run: |
           npm ci
           npm run build
-          [ -d "dist" ] || { echo "❌ Build failed"; exit 1; }
+          [ -d "dist" ] || { echo "❌ Build failed - dist folder missing"; exit 1; }
+          [ -f "ecosystem.config.js" ] || { echo "❌ Missing ecosystem.config.js"; exit 1; }
 
-      # Criação do pacote sem falhar se .env não existir
+      # Criação do pacote
       - name: Create deployment package
         run: |
-          # Lista de arquivos obrigatórios
+          # Lista de arquivos com verificação
           FILES="dist/ package.json package-lock.json ecosystem.config.js prisma/"
-
-          # Adiciona .env apenas se existir
           [ -f ".env" ] && FILES="$FILES .env" || echo "ℹ️ .env não incluído - será criado no servidor"
 
           # Cria o pacote
           tar -czvf deploy.tar.gz $FILES
 
-          # Verificação
+          # Verificação final
           [ -f "deploy.tar.gz" ] || { echo "❌ Failed to create package"; exit 1; }
-          echo "✅ Conteúdo do pacote:"
+          echo "✅ Package contents:"
           tar -tzf deploy.tar.gz
 
-      # Deploy no servidor
+      # Deploy completo
       - name: Deploy to server
         run: |
-          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
+          scp -o ConnectTimeout=15 \
+              -i ~/.ssh/deploy_key \
+              deploy.tar.gz \
+              ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/ || {
+            echo "❌ Falha no upload do pacote";
+            exit 1;
+          }
 
-          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+          ssh -o ConnectTimeout=15 \
+              -i ~/.ssh/deploy_key \
+              ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -eo pipefail
-            echo '1. 🧹 Limpando deploy anterior...'
-            sudo rm -rf /var/www/tudu-api/*
+            echo '1. 🧹 Preparando ambiente...'
             sudo mkdir -p /var/www/tudu-api
+            cd /var/www/tudu-api
+            sudo rm -rf ./*
             
             echo '2. 📦 Extraindo arquivos...'
-            sudo tar -xzf /tmp/deploy.tar.gz -C /var/www/tudu-api
+            sudo tar -xzf /tmp/deploy.tar.gz -C .
+            sudo chown -R ${{ secrets.SSH_USER }}:www-data .
             
             echo '3. 🔑 Configurando .env...'
-            cat <<EOF > /var/www/tudu-api/.env
+            cat <<EOF > .env
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             JWT_SECRET=${{ secrets.JWT_SECRET }}
             # Adicione outras variáveis aqui
             EOF
-            chmod 600 /var/www/tudu-api/.env
+            chmod 600 .env
             
             echo '4. ⚙️ Instalando dependências...'
-            cd /var/www/tudu-api
             npm ci --production
             
             echo '5. 🗃️ Executando migrações...'
@@ -97,8 +121,17 @@ jobs:
             pm2 start ecosystem.config.js
             pm2 save
             
-            echo '7. ✅ Verificando...'
+            echo '7. ✅ Verificando deploy...'
+            echo 'Arquivos no diretório:'
+            ls -la
+            echo '\nStatus PM2:'
             pm2 list
-            echo 'Saúde da API:'
-            curl -s http://localhost:3000/health || { echo '❌ Health check failed'; exit 1; }
-          "
+            echo '\nHealth Check:'
+            curl -sSf http://localhost:3000/health || {
+              echo '❌ Health check failed';
+              exit 1;
+            }
+          " || {
+            echo "❌ Falha durante o deploy remoto";
+            exit 1;
+          }
