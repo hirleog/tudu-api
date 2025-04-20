@@ -58,17 +58,19 @@ jobs:
           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -eo pipefail
             
-            # Corrige permissões antes de qualquer operação
-            sudo chown -R ${{ secrets.SSH_USER }}:${{ secrets.SSH_USER }} /var/www/tudu-api
-            sudo chmod -R 755 /var/www/tudu-api
+            # Usa o diretório home do usuário para evitar precisar de sudo
+            DEPLOY_DIR=\"/home/${{ secrets.SSH_USER }}/tudu-api\"
             
-            cd /var/www/tudu-api
+            # Cria diretório se não existir
+            mkdir -p \$DEPLOY_DIR
             
-            # Remove apenas o necessário (evita problemas com node_modules)
-            rm -rf dist/* package.json package-lock.json ecosystem.config.js prisma
+            # Limpa apenas arquivos essenciais (sem node_modules)
+            rm -rf \$DEPLOY_DIR/dist/* \$DEPLOY_DIR/package.json \$DEPLOY_DIR/ecosystem.config.js
             
             # Extrai os arquivos
-            tar -xzf /tmp/deploy.tar.gz -C .
+            tar -xzf /tmp/deploy.tar.gz -C \$DEPLOY_DIR
+            
+            cd \$DEPLOY_DIR
             
             # Configura .env
             cat <<EOF > .env
@@ -79,27 +81,20 @@ jobs:
             EOF
             chmod 600 .env
             
-            # Instala dependências (força limpeza do cache se necessário)
-            npm cache clean --force
+            # Instala dependências localmente
             npm ci --production
             
             # Configuração do Prisma
             npx prisma generate
             npx prisma migrate deploy
             
-            # Reinicia a aplicação
+            # Inicia a aplicação
             pm2 delete tudu-api --silent || true
             pm2 start ecosystem.config.js --update-env
             pm2 save
-            sleep 5
             
-            # Verificação final
-            echo '=== Status do PM2 ==='
+            # Verificação
+            echo '=== Status ==='
             pm2 list
-            echo '=== Health Check ==='
-            curl -sSf http://localhost:3000/health || {
-              echo '::error::❌ Health check failed'
-              pm2 logs tudu-api --lines 50
-              exit 1
-            }
+            curl -sSf http://localhost:3000/health
           "
