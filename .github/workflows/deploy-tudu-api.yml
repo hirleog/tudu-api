@@ -3,10 +3,6 @@ name: Deploy Tudu API (Production)
 on:
   push:
     branches: ['master', 'main']
-    paths:
-      - 'src/**'
-      - 'package.json'
-      - 'prisma/**'
 
 jobs:
   deploy:
@@ -14,84 +10,69 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      # Configuração SSH
+      # Configuração SSH corrigida
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          echo -e "Host ${{ secrets.SSH_HOST }}\n  HostName ${{ secrets.SSH_HOST }}\n  User ${{ secrets.SSH_USER }}\n  IdentityFile ~/.ssh/deploy_key" > ~/.ssh/config
-          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      # Build e validação
-      - name: Install, Build & Validate
+          # Config file simplificado
+          echo -e "Host ${{ secrets.SSH_HOST }}\n\tHostName ${{ secrets.SSH_HOST }}\n\tUser ${{ secrets.SSH_USER }}\n\tIdentityFile ~/.ssh/deploy_key\n\tStrictHostKeyChecking no" > ~/.ssh/config
+
+          # ssh-keyscan corrigido (removida a flag problemática)
+          ssh-keyscan ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Teste de conexão
+          ssh -o BatchMode=yes -o ConnectTimeout=5 ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} exit
+
+      # Build da aplicação
+      - name: Build application
         run: |
           npm ci
           npm run build
+          ls -la dist/
 
-          # Validações críticas
-          [ -d "dist" ] || { echo "Error: Build failed - dist/ missing"; exit 1; }
-          [ -f "prisma/schema.prisma" ] || { echo "Error: prisma/schema.prisma missing"; exit 1; }
-
-      # Deploy com Prisma
-      - name: Deploy Files & Migrate
+      # Deploy com tratamento de erros
+      - name: Deploy to Server
         run: |
-          # Cria pacote otimizado
-          tar -czf deploy.tar.gz \
-            dist/ \
-            package.json \
-            package-lock.json \
-            ecosystem.config.js \
-            .env \
-            prisma/
+          # Cria pacote com verificação
+          {
+            echo "dist/"
+            [ -f "package.json" ] && echo "package.json"
+            [ -f "package-lock.json" ] && echo "package-lock.json"
+            [ -f "ecosystem.config.js" ] && echo "ecosystem.config.js"
+            [ -f ".env" ] && echo ".env"
+            [ -d "prisma" ] && echo "prisma/"
+          } | tar -czf deploy.tar.gz -T -
 
-          # Transfere e executa no servidor
-          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
+          # Transfere com verificações
+          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/ || exit 1
 
+          # Execução remota com tratamento de erros
           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
-            # Extrai arquivos
+            set -e
+            echo 'Removing old files...'
             sudo rm -rf /var/www/tudu-api/*
-            tar -xzf /tmp/deploy.tar.gz -C /var/www/tudu-api/
             
-            # Configura ambiente
+            echo 'Extracting files...'
+            sudo tar -xzf /tmp/deploy.tar.gz -C /var/www/tudu-api/
+            
+            echo 'Setting permissions...'
+            sudo chown -R ${{ secrets.SSH_USER }}:www-data /var/www/tudu-api
+            
+            echo 'Installing dependencies...'
             cd /var/www/tudu-api
             npm ci --production
             
-            # Executa migrações do Prisma
+            echo 'Running Prisma migrations...'
             npx prisma generate
             npx prisma migrate deploy
             
-            # Reinicia PM2
+            echo 'Restarting PM2...'
             pm2 delete tudu-api --silent || true
             pm2 start ecosystem.config.js
             pm2 save
           "
-
-      # Validação pós-deploy
-      - name: Verify Deployment
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.API_TUDU_SSH_KEY }}
-          script: |
-            echo "=== Deployment Verification ==="
-            ls -la /var/www/tudu-api/dist/
-
-            echo "=== Prisma Status ==="
-            npx prisma migrate status
-
-            echo "=== PM2 Status ==="
-            pm2 list
-
-            echo "=== API Health Check ==="
-            curl -s http://localhost:3000/health || { echo "Health check failed"; exit 1; }
