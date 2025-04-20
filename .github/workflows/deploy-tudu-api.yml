@@ -58,16 +58,22 @@ jobs:
           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -eo pipefail
             
-            # Verifica e instala Node.js se necessário
+            # Verifica se o Node.js está instalado (sem usar sudo)
             if ! command -v node &> /dev/null; then
               echo 'Instalando Node.js...'
-              curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-              sudo apt-get install -y nodejs
+              # Método alternativo sem sudo
+              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
+              export NVM_DIR=\"\$HOME/.nvm\"
+              [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\"
+              nvm install 18
+              nvm use 18
             fi
             
-            # Garante que o PM2 está instalado globalmente
+            # Instala o PM2 globalmente (sem sudo)
             if ! command -v pm2 &> /dev/null; then
-              sudo npm install -g pm2
+              echo 'Instalando PM2...'
+              npm install -g pm2
+              export PATH=\"\$PATH:\$HOME/.npm-global/bin\"
             fi
             
             cd /var/www/tudu-api
@@ -98,7 +104,7 @@ jobs:
             pm2 delete tudu-api --silent || true
             pm2 start ecosystem.config.js --update-env
             pm2 save
-            sleep 5  # Espera a aplicação iniciar
+            sleep 5
             
             # Verificação final
             echo '=== Status do PM2 ==='
