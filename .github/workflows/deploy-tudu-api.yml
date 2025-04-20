@@ -50,13 +50,50 @@ jobs:
             prisma/
           [ -f "deploy.tar.gz" ] || { echo "::error::❌ Failed to create package"; exit 1; }
 
-      - name: Deploy to server
-        run: |
-          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
+- name: Deploy to server
+  run: |
+    scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
 
-          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
-            set -eo pipefail
-            # Comandos com sudo agora não pedirão senha
-            sudo chown -R ${{ secrets.SSH_USER }}:${{ secrets.SSH_USER }} /var/www/tudu-api
-            # Resto do script...
-          "
+    ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+      set -eo pipefail
+      
+      # 1. Usar diretório home do usuário (não requer sudo)
+      DEPLOY_DIR=\"\$HOME/tudu-api\"
+      mkdir -p \$DEPLOY_DIR
+      
+      # 2. Limpeza segura
+      rm -rf \$DEPLOY_DIR/dist/ \$DEPLOY_DIR/package*.json \$DEPLOY_DIR/prisma/ \$DEPLOY_DIR/ecosystem.config.js
+      
+      # 3. Extração
+      tar -xzf /tmp/deploy.tar.gz -C \$DEPLOY_DIR
+      
+      cd \$DEPLOY_DIR
+      
+      # 4. Configuração .env
+      cat > .env <<EOF
+      DATABASE_URL='${{ secrets.DATABASE_URL }}'
+      JWT_SECRET='${{ secrets.JWT_SECRET }}'
+      NODE_ENV=production
+      PORT=3000
+      EOF
+      chmod 600 .env
+      
+      # 5. Instalação e migrações
+      npm ci --production
+      npx prisma generate
+      npx prisma migrate deploy
+      
+      # 6. Gerenciamento PM2 (sem sudo)
+      export PATH=\"\$PATH:\$(npm bin -g)\"
+      pm2 delete tudu-api --silent || true
+      pm2 start ecosystem.config.js --update-env
+      pm2 save
+      
+      # 7. Verificação
+      sleep 5
+      curl -sSf http://localhost:3000/health || {
+        echo '::error::❌ Health check failed'
+        pm2 logs tudu-api --lines 100
+        exit 1
+      }
+    "
