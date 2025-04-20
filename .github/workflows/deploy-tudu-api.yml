@@ -7,81 +7,120 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30 # Aumentado para garantir tempo suficiente
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Importante para o Prisma
 
-      # Configuração SSH simplificada e mais robusta
+      # Configuração SSH mais robusta
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          # Config file mínimo
-          echo -e "Host tudu-deploy\n\tHostName ${{ secrets.SSH_HOST }}\n\tUser ${{ secrets.SSH_USER }}\n\tIdentityFile ~/.ssh/deploy_key\n\tStrictHostKeyChecking no" > ~/.ssh/config
+          # Config file otimizado
+          cat <<EOF > ~/.ssh/config
+          Host ${{ secrets.SSH_HOST }}
+            HostName ${{ secrets.SSH_HOST }}
+            User ${{ secrets.SSH_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking no
+            ConnectTimeout 15
+          EOF
 
-          # Adiciona host manualmente (evita ssh-keyscan problemático)
+          # Adiciona fingerprint manualmente (substitua pela do seu servidor)
           echo "${{ secrets.SSH_HOST }} ecdsa-sha2-nistp256 AAAAE2VjZH..." >> ~/.ssh/known_hosts
+
+          # Teste de conexão
+          ssh -o BatchMode=yes ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} exit
+
+      # Configuração do Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
 
       # Build da aplicação
       - name: Build application
         run: |
           npm ci
           npm run build
-          [ -d "dist" ] || { echo "Error: Build failed - no dist folder"; exit 1; }
 
-      # Deploy em etapas separadas para melhor debug
+          # Verificações pós-build
+          [ -d "dist" ] || { echo "❌ Build failed - dist folder missing"; exit 1; }
+          [ -f "prisma/schema.prisma" ] || { echo "❌ Prisma schema missing"; exit 1; }
+
+      # Criação do pacote de deploy
       - name: Create deployment package
         run: |
-          tar -czf deploy.tar.gz \
-            dist/ \
-            package.json \
-            package-lock.json \
-            ecosystem.config.js \
-            .env \
-            prisma/
-          ls -lh deploy.tar.gz
+          # Lista de arquivos com verificação
+          FILES="dist/ package.json package-lock.json ecosystem.config.js prisma/"
+          [ -f ".env" ] && FILES="$FILES .env" || echo "ℹ️ .env not included"
 
+          # Cria o pacote
+          tar -czvf deploy.tar.gz $FILES
+
+          # Verificação final
+          [ -f "deploy.tar.gz" ] || { echo "❌ Failed to create package"; exit 1; }
+          echo "✅ Package contents:"
+          tar -tzf deploy.tar.gz | awk '{print $6}'
+
+      # Upload do pacote
       - name: Upload package
-        uses: appleboy/scp-action@master
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.API_TUDU_SSH_KEY }}
           source: 'deploy.tar.gz'
           target: '/tmp/'
+          overwrite: true
+          timeout: 30s
 
+      # Execução no servidor
       - name: Run deployment on server
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.API_TUDU_SSH_KEY }}
+          script_timeout: 10m
           script: |
-            set -e
-            echo "### Starting deployment ###"
+            set -eo pipefail
+            echo "### 🚀 Starting deployment ###"
+
+            # 1. Preparação do ambiente
             cd /var/www/tudu-api
+            echo "1. 🧹 Cleaning old files..."
+            sudo find . -mindepth 1 -delete
 
-            echo "1. Cleaning old files..."
-            sudo rm -rf ./*
-
-            echo "2. Extracting new files..."
+            # 2. Extração
+            echo "2. 📦 Extracting new files..."
             sudo tar -xzf /tmp/deploy.tar.gz -C .
             sudo chown -R ${{ secrets.SSH_USER }}:www-data .
 
-            echo "3. Installing dependencies..."
-            npm ci --production
+            # 3. Dependências
+            echo "3. ⚙️ Installing dependencies..."
+            npm ci --production --no-audit
 
-            echo "4. Running database migrations..."
+            # 4. Banco de dados
+            echo "4. 🗃️ Running database migrations..."
             npx prisma generate
             npx prisma migrate deploy
 
-            echo "5. Restarting application..."
-            pm2 delete tudu-api || true
+            # 5. Reinicialização
+            echo "5. 🔄 Restarting application..."
+            pm2 delete tudu-api --silent 2>/dev/null || true
             pm2 start ecosystem.config.js
             pm2 save
 
-            echo "### Deployment complete ###"
+            # Verificação final
+            echo "### ✅ Deployment complete ###"
+            echo "📋 Application status:"
             pm2 list
+            echo "🌐 Health check:"
+            curl -sSf http://localhost:3000/health || { echo "❌ Health check failed"; exit 1; }
