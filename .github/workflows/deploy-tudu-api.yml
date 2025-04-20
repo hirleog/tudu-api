@@ -12,90 +12,76 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Configuração SSH com tratamento de erros
+      # Configuração SSH simplificada e mais robusta
       - name: Configure SSH
         run: |
-          set -e  # Faz o script falhar imediatamente em caso de erro
-          echo "Configuring SSH..."
-
           mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-
-          # Escreve a chave SSH com verificação
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          # Verifica se a chave foi escrita corretamente
-          if [ ! -s ~/.ssh/deploy_key ]; then
-            echo "Error: SSH key file is empty!"
-            exit 1
-          fi
+          # Config file mínimo
+          echo -e "Host tudu-deploy\n\tHostName ${{ secrets.SSH_HOST }}\n\tUser ${{ secrets.SSH_USER }}\n\tIdentityFile ~/.ssh/deploy_key\n\tStrictHostKeyChecking no" > ~/.ssh/config
 
-          # Configuração do SSH
-          cat <<EOF > ~/.ssh/config
-          Host ${{ secrets.SSH_HOST || '89.116.73.70' }}
-            HostName ${{ secrets.SSH_HOST || '89.116.73.70' }}
-            User ${{ secrets.SSH_USER || 'deployer' }}
-            StrictHostKeyChecking no
-            IdentityFile ~/.ssh/deploy_key
-            LogLevel ERROR
-          EOF
-
-          chmod 600 ~/.ssh/config
-
-          # Scan do host com tratamento de erro
-          echo "Scanning host keys..."
-          ssh-keyscan -H "${{ secrets.SSH_HOST || '89.116.73.70' }}" >> ~/.ssh/known_hosts 2>&1
-
-          echo "SSH configuration complete!"
-          echo "Testing connection..."
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=5 ${{ secrets.SSH_USER || 'deployer' }}@${{ secrets.SSH_HOST || '89.116.73.70' }} echo "SSH connection test successful!"
+          # Adiciona host manualmente (evita ssh-keyscan problemático)
+          echo "${{ secrets.SSH_HOST }} ecdsa-sha2-nistp256 AAAAE2VjZH..." >> ~/.ssh/known_hosts
 
       # Build da aplicação
       - name: Build application
         run: |
           npm ci
           npm run build
-          ls -la dist/
+          [ -d "dist" ] || { echo "Error: Build failed - no dist folder"; exit 1; }
 
-      # Deploy com tratamento de erros
-      - name: Deploy to Server
+      # Deploy em etapas separadas para melhor debug
+      - name: Create deployment package
         run: |
-          # Cria pacote com verificação
-          {
-            echo "dist/"
-            [ -f "package.json" ] && echo "package.json"
-            [ -f "package-lock.json" ] && echo "package-lock.json"
-            [ -f "ecosystem.config.js" ] && echo "ecosystem.config.js"
-            [ -f ".env" ] && echo ".env"
-            [ -d "prisma" ] && echo "prisma/"
-          } | tar -czf deploy.tar.gz -T -
+          tar -czf deploy.tar.gz \
+            dist/ \
+            package.json \
+            package-lock.json \
+            ecosystem.config.js \
+            .env \
+            prisma/
+          ls -lh deploy.tar.gz
 
-          # Transfere com verificações
-          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/ || exit 1
+      - name: Upload package
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.API_TUDU_SSH_KEY }}
+          source: 'deploy.tar.gz'
+          target: '/tmp/'
 
-          # Execução remota com tratamento de erros
-          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+      - name: Run deployment on server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.API_TUDU_SSH_KEY }}
+          script: |
             set -e
-            echo 'Removing old files...'
-            sudo rm -rf /var/www/tudu-api/*
-            
-            echo 'Extracting files...'
-            sudo tar -xzf /tmp/deploy.tar.gz -C /var/www/tudu-api/
-            
-            echo 'Setting permissions...'
-            sudo chown -R ${{ secrets.SSH_USER }}:www-data /var/www/tudu-api
-            
-            echo 'Installing dependencies...'
+            echo "### Starting deployment ###"
             cd /var/www/tudu-api
+
+            echo "1. Cleaning old files..."
+            sudo rm -rf ./*
+
+            echo "2. Extracting new files..."
+            sudo tar -xzf /tmp/deploy.tar.gz -C .
+            sudo chown -R ${{ secrets.SSH_USER }}:www-data .
+
+            echo "3. Installing dependencies..."
             npm ci --production
-            
-            echo 'Running Prisma migrations...'
+
+            echo "4. Running database migrations..."
             npx prisma generate
             npx prisma migrate deploy
-            
-            echo 'Restarting PM2...'
-            pm2 delete tudu-api --silent || true
+
+            echo "5. Restarting application..."
+            pm2 delete tudu-api || true
             pm2 start ecosystem.config.js
             pm2 save
-          "
+
+            echo "### Deployment complete ###"
+            pm2 list
