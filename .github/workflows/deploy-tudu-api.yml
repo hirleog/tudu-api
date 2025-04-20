@@ -51,6 +51,15 @@ jobs:
             prisma/
           [ -f "deploy.tar.gz" ] || { echo "::error::❌ Failed to create package"; exit 1; }
 
+      - name: Install Prisma and run migrations
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            cd /var/www/tudu-api
+            npm install @prisma/cli --save-dev
+            npx prisma generate
+            npx prisma migrate deploy
+          "
+
       - name: Deploy to server
         run: |
           scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
