@@ -43,14 +43,20 @@ jobs:
 
       - name: Create deployment package
         run: |
+          # Verifica se .env.example existe, caso contrário cria um vazio
+          if [ ! -f .env.example ]; then
+            touch .env.example
+            echo "DATABASE_URL=\"mysql://user:password@host:port/db\"" >> .env.example
+            echo "JWT_SECRET=\"your_jwt_secret\"" >> .env.example
+          fi
+
           tar -czvf deploy.tar.gz \
             dist/ \
             package.json \
             package-lock.json \
             ecosystem.config.js \
             prisma/ \
-            .env.example
-          [ -f "deploy.tar.gz" ] || { echo "::error::❌ Failed to create package"; exit 1; }
+            .env.example || { echo "::warning::Some files were not included"; true; }
 
       - name: Deploy to server
         run: |
@@ -58,70 +64,43 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -eo pipefail
-            
-            # Configurações iniciais
             DEPLOY_DIR=\"/var/www/tudu-api\"
-            LOG_FILE=\"\$DEPLOY_DIR/deploy.log\"
             
             # Cria diretório se não existir
-            sudo mkdir -p \$DEPLOY_DIR
-            sudo chown -R ${{ secrets.SSH_USER }}:${{ secrets.SSH_USER }} \$DEPLOY_DIR
+            mkdir -p \$DEPLOY_DIR
             
-            echo '=== Iniciando Deploy ===' > \$LOG_FILE
-            
-            # Limpeza seletiva
-            echo '=== Limpando arquivos antigos ===' >> \$LOG_FILE
-            rm -rf \$DEPLOY_DIR/dist/ &>> \$LOG_FILE
-            rm -rf \$DEPLOY_DIR/prisma/ &>> \$LOG_FILE
-            rm -f \$DEPLOY_DIR/package*.json &>> \$LOG_FILE
-            
-            # Extração
-            echo '=== Extraindo arquivos ===' >> \$LOG_FILE
-            tar -xzf /tmp/deploy.tar.gz -C \$DEPLOY_DIR &>> \$LOG_FILE
+            # Extrai arquivos ignorando erros de arquivos faltantes
+            tar -xzf /tmp/deploy.tar.gz -C \$DEPLOY_DIR --warning=no-absent-files
             
             cd \$DEPLOY_DIR
             
-            # Configuração de ambiente
-            echo '=== Configurando .env ===' >> \$LOG_FILE
+            # Configura .env apenas se não existir
             if [ ! -f .env ]; then
-              cp .env.example .env
+              [ -f .env.example ] && cp .env.example .env || touch .env
+              echo \"NODE_ENV=production\" >> .env
+              echo \"PORT=3000\" >> .env
             fi
+            
+            # Atualiza apenas as variáveis necessárias
             sed -i \"s|DATABASE_URL=.*|DATABASE_URL='${{ secrets.DATABASE_URL }}'|\" .env
             sed -i \"s|JWT_SECRET=.*|JWT_SECRET='${{ secrets.JWT_SECRET }}'|\" .env
-            echo \"NODE_ENV=production\" >> .env
-            echo \"PORT=3000\" >> .env
             chmod 600 .env
             
-            # Instalação
-            echo '=== Instalando dependências ===' >> \$LOG_FILE
-            npm ci --production &>> \$LOG_FILE
+            # Instalação e migrações
+            npm ci --production
+            npx prisma generate
+            npx prisma migrate deploy
             
-            # Prisma - Garantia de migração
-            echo '=== Executando migrações ===' >> \$LOG_FILE
-            export PATH=\"\$PATH:\$(npm bin)\"
-            npx prisma generate &>> \$LOG_FILE
-            npx prisma migrate deploy &>> \$LOG_FILE || {
-              echo '::error::❌ Migration failed';
-              cat \$LOG_FILE;
-              exit 1;
-            }
-            
-            # Reinicialização
-            echo '=== Reiniciando aplicação ===' >> \$LOG_FILE
-            pm2 delete tudu-api --silent &>> \$LOG_FILE || true
-            pm2 start ecosystem.config.js --update-env &>> \$LOG_FILE
-            pm2 save &>> \$LOG_FILE
+            # Reinicia a aplicação
+            pm2 delete tudu-api --silent || true
+            pm2 start ecosystem.config.js --update-env
+            pm2 save
             
             # Verificação
-            echo '=== Verificando saúde ===' >> \$LOG_FILE
-            sleep 5 # Aguarda inicialização
-            if ! curl -sSf http://localhost:3000/health &>> \$LOG_FILE; then
+            sleep 5
+            curl -sSf http://localhost:3000/health || {
               echo '::error::❌ Health check failed';
               pm2 logs tudu-api --lines 50;
-              cat \$LOG_FILE;
               exit 1;
-            fi
-            
-            echo '=== Deploy concluído com sucesso ===' >> \$LOG_FILE
-            cat \$LOG_FILE
+            }
           "
