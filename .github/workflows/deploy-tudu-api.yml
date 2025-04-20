@@ -20,71 +20,59 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      # Configuração SSH robusta
+      # Configuração SSH com verificação de secrets
       - name: Configure SSH
         run: |
+          # Verificação obrigatória dos secrets
+          if [ -z "${{ secrets.SSH_HOST }}" ] || [ -z "${{ secrets.SSH_USER }}" ] || [ -z "${{ secrets.API_TUDU_SSH_KEY }}" ]; then
+            echo "::error::❌ Secrets não configurados: Verifique SSH_HOST, SSH_USER e API_TUDU_SSH_KEY"
+            exit 1
+          fi
+
           mkdir -p ~/.ssh
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          # Verifica se os secrets existem
-          if [ -z "${{ secrets.SSH_HOST }}" ] || [ -z "${{ secrets.SSH_USER }}" ]; then
-            echo "❌ SSH_HOST ou SSH_USER não configurados"
-            exit 1
-          fi
-
-          # Config file com tratamento de erros
-          cat <<EOF > ~/.ssh/config
-          Host ${{ secrets.SSH_HOST }}
-            HostName ${{ secrets.SSH_HOST }}
-            User ${{ secrets.SSH_USER }}
-            IdentityFile ~/.ssh/deploy_key
-            StrictHostKeyChecking no
-            ConnectTimeout 15
-          EOF
+          # Config file com escape correto
+          echo "Host ${{ secrets.SSH_HOST }}" > ~/.ssh/config
+          echo "  HostName ${{ secrets.SSH_HOST }}" >> ~/.ssh/config
+          echo "  User ${{ secrets.SSH_USER }}" >> ~/.ssh/config
+          echo "  IdentityFile ~/.ssh/deploy_key" >> ~/.ssh/config
+          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+          echo "  ConnectTimeout 15" >> ~/.ssh/config
 
           chmod 600 ~/.ssh/config
 
-          # Adiciona fingerprint (substitua AAA... pela do seu servidor)
+          # Adiciona fingerprint (substitua pela do seu servidor)
           echo "${{ secrets.SSH_HOST }} ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAA..." >> ~/.ssh/known_hosts
-
-          # Teste de conexão
-          ssh -o BatchMode=yes -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} exit || {
-            echo "❌ Falha na conexão SSH";
-            exit 1;
-          }
 
       # Build da aplicação
       - name: Build application
         run: |
           npm ci
           npm run build
-          [ -d "dist" ] || { echo "❌ Build failed - dist folder missing"; exit 1; }
-          [ -f "ecosystem.config.js" ] || { echo "❌ Missing ecosystem.config.js"; exit 1; }
+          [ -d "dist" ] || { echo "::error::❌ Build failed - dist folder missing"; exit 1; }
+          [ -f "ecosystem.config.js" ] || { echo "::error::❌ Missing ecosystem.config.js"; exit 1; }
 
       # Criação do pacote
       - name: Create deployment package
         run: |
-          # Lista de arquivos com verificação
           FILES="dist/ package.json package-lock.json ecosystem.config.js prisma/"
           [ -f ".env" ] && FILES="$FILES .env" || echo "ℹ️ .env não incluído - será criado no servidor"
 
-          # Cria o pacote
           tar -czvf deploy.tar.gz $FILES
-
-          # Verificação final
-          [ -f "deploy.tar.gz" ] || { echo "❌ Failed to create package"; exit 1; }
+          [ -f "deploy.tar.gz" ] || { echo "::error::❌ Failed to create package"; exit 1; }
           echo "✅ Package contents:"
           tar -tzf deploy.tar.gz
 
-      # Deploy completo
+      # Deploy no servidor
       - name: Deploy to server
         run: |
           scp -o ConnectTimeout=15 \
               -i ~/.ssh/deploy_key \
               deploy.tar.gz \
               ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/ || {
-            echo "❌ Falha no upload do pacote";
+            echo "::error::❌ Falha no upload do pacote";
             exit 1;
           }
 
@@ -105,7 +93,8 @@ jobs:
             cat <<EOF > .env
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             JWT_SECRET=${{ secrets.JWT_SECRET }}
-            # Adicione outras variáveis aqui
+            PORT=3000
+            NODE_ENV=production
             EOF
             chmod 600 .env
             
@@ -121,17 +110,17 @@ jobs:
             pm2 start ecosystem.config.js
             pm2 save
             
-            echo '7. ✅ Verificando deploy...'
-            echo 'Arquivos no diretório:'
+            echo '7. ✅ Verificação final...'
+            echo '=== Arquivos ==='
             ls -la
-            echo '\nStatus PM2:'
+            echo '=== PM2 Status ==='
             pm2 list
-            echo '\nHealth Check:'
+            echo '=== Health Check ==='
             curl -sSf http://localhost:3000/health || {
-              echo '❌ Health check failed';
+              echo '::error::❌ Health check failed';
               exit 1;
             }
           " || {
-            echo "❌ Falha durante o deploy remoto";
+            echo "::error::❌ Falha durante o deploy remoto";
             exit 1;
           }
