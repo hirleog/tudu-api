@@ -86,3 +86,38 @@ jobs:
             echo "### Deployment complete ###"
             pm2 list
 
+      - name: Deploy to Server
+        run: |
+          # Cria pacote com tratamento seguro
+          FILES="dist/ package.json package-lock.json ecosystem.config.js prisma/"
+          [ -f ".env" ] && FILES="$FILES .env"
+          tar -czf deploy.tar.gz $FILES || { echo "Failed to create package"; exit 1; }
+
+          # Transfere arquivos
+          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/ || exit 1
+
+          # Executa no servidor
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            set -e
+            echo 'Removendo arquivos antigos...'
+            sudo rm -rf /var/www/tudu-api/*
+            
+            echo 'Extraindo novos arquivos...'
+            sudo tar -xzf /tmp/deploy.tar.gz -C /var/www/tudu-api/
+            
+            echo 'Aplicando permissões...'
+            sudo chown -R ${{ secrets.SSH_USER }}:www-data /var/www/tudu-api
+            
+            echo 'Instalando dependências...'
+            cd /var/www/tudu-api
+            npm ci --production
+            
+            echo 'Executando migrações do Prisma...'
+            npx prisma generate
+            npx prisma migrate deploy
+            
+            echo 'Reiniciando aplicação...'
+            pm2 delete tudu-api --silent || true
+            pm2 start ecosystem.config.js
+            pm2 save
+          "
