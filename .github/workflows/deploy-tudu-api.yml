@@ -7,7 +7,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # Aumentado para garantir tempo suficiente
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -32,9 +32,9 @@ jobs:
           EOF
 
           # Adiciona fingerprint manualmente (substitua pela do seu servidor)
-          echo "${{ secrets.SSH_HOST }} ecdsa-sha2-nistp256 AAAAE2VjZH..." >> ~/.ssh/known_hosts
+          echo "${{ secrets.SSH_HOST }} ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAA..." >> ~/.ssh/known_hosts
 
-          # Teste de conexão
+          # Teste de conexão básico
           ssh -o BatchMode=yes ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} exit
 
       # Configuração do Node.js
@@ -67,60 +67,56 @@ jobs:
           # Verificação final
           [ -f "deploy.tar.gz" ] || { echo "❌ Failed to create package"; exit 1; }
           echo "✅ Package contents:"
-          tar -tzf deploy.tar.gz | awk '{print $6}'
+          tar -tzf deploy.tar.gz
 
-      # Upload do pacote
+      # Upload do pacote usando SCP nativo (sem ação de terceiros)
       - name: Upload package
-        uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.API_TUDU_SSH_KEY }}
-          source: 'deploy.tar.gz'
-          target: '/tmp/'
-          overwrite: true
-          timeout: 30s
+        run: |
+          scp -i ~/.ssh/deploy_key \
+              -o ConnectTimeout=15 \
+              -o StrictHostKeyChecking=no \
+              deploy.tar.gz \
+              ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
 
-      # Execução no servidor
+      # Execução no servidor usando SSH nativo
       - name: Run deployment on server
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.API_TUDU_SSH_KEY }}
-          script_timeout: 10m
-          script: |
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+              -o ConnectTimeout=15 \
+              -o StrictHostKeyChecking=no \
+              ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -eo pipefail
-            echo "### 🚀 Starting deployment ###"
-
+            echo '### 🚀 Starting deployment ###'
+            
             # 1. Preparação do ambiente
             cd /var/www/tudu-api
-            echo "1. 🧹 Cleaning old files..."
+            echo '1. 🧹 Cleaning old files...'
             sudo find . -mindepth 1 -delete
-
+            
             # 2. Extração
-            echo "2. 📦 Extracting new files..."
+            echo '2. 📦 Extracting new files...'
             sudo tar -xzf /tmp/deploy.tar.gz -C .
             sudo chown -R ${{ secrets.SSH_USER }}:www-data .
-
+            
             # 3. Dependências
-            echo "3. ⚙️ Installing dependencies..."
+            echo '3. ⚙️ Installing dependencies...'
             npm ci --production --no-audit
-
+            
             # 4. Banco de dados
-            echo "4. 🗃️ Running database migrations..."
+            echo '4. 🗃️ Running database migrations...'
             npx prisma generate
             npx prisma migrate deploy
-
+            
             # 5. Reinicialização
-            echo "5. 🔄 Restarting application..."
+            echo '5. 🔄 Restarting application...'
             pm2 delete tudu-api --silent 2>/dev/null || true
             pm2 start ecosystem.config.js
             pm2 save
-
+            
             # Verificação final
-            echo "### ✅ Deployment complete ###"
-            echo "📋 Application status:"
+            echo '### ✅ Deployment complete ###'
+            echo '📋 Application status:'
             pm2 list
-            echo "🌐 Health check:"
-            curl -sSf http://localhost:3000/health || { echo "❌ Health check failed"; exit 1; }
+            echo '🌐 Health check:'
+            curl -sSf http://localhost:3000/health || { echo '❌ Health check failed'; exit 1; }
+          "
