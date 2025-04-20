@@ -7,11 +7,12 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30 # Aumentado para migrações do Prisma
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Importante para o Prisma
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -19,50 +20,74 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      # Configuração SSH com tratamento de erros
+      # Configuração SSH mais robusta
       - name: Configure SSH
         run: |
-          set -e  # Faz o script falhar imediatamente em caso de erro
-          echo "Configuring SSH..."
-
           mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-
-          # Escreve a chave SSH com verificação
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          # Verifica se a chave foi escrita corretamente
-          if [ ! -s ~/.ssh/deploy_key ]; then
-            echo "Error: SSH key file is empty!"
-            exit 1
-          fi
-
-          # Configuração do SSH
           cat <<EOF > ~/.ssh/config
-          Host ${{ secrets.SSH_HOST || '89.116.73.70' }}
-            HostName ${{ secrets.SSH_HOST || '89.116.73.70' }}
-            User ${{ secrets.SSH_USER || 'deployer' }}
-            StrictHostKeyChecking no
+          Host ${{ secrets.SSH_HOST }}
+            HostName ${{ secrets.SSH_HOST }}
+            User ${{ secrets.SSH_USER }}
             IdentityFile ~/.ssh/deploy_key
-            LogLevel ERROR
+            StrictHostKeyChecking no
+            ConnectTimeout 15
           EOF
 
-          chmod 600 ~/.ssh/config
+          echo "${{ secrets.SSH_HOST }} ecdsa-sha2-nistp256 AAA..." >> ~/.ssh/known_hosts
 
-          # Scan do host com tratamento de erro
-          echo "Scanning host keys..."
-          ssh-keyscan -H "${{ secrets.SSH_HOST || '89.116.73.70' }}" >> ~/.ssh/known_hosts 2>&1
-
-          echo "SSH configuration complete!"
-          echo "Testing connection..."
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=5 ${{ secrets.SSH_USER || 'deployer' }}@${{ secrets.SSH_HOST || '89.116.73.70' }} echo "SSH connection test successful!"
-
-      # Build da aplicação
+      # Build com verificação
       - name: Build application
         run: |
           npm ci
           npm run build
-          ls -la dist/
+          [ -d "dist" ] || { echo "❌ Build failed"; exit 1; }
+          [ -f "ecosystem.config.js" ] || { echo "❌ Missing ecosystem.config.js"; exit 1; }
 
-      # Resto do seu workflow...
+      # Criação do pacote
+      - name: Create deployment package
+        run: |
+          tar -czvf deploy.tar.gz \
+            dist/ \
+            package.json \
+            package-lock.json \
+            ecosystem.config.js \
+            .env \
+            prisma/
+          ls -lh deploy.tar.gz
+
+      # Deploy completo
+      - name: Deploy to server
+        run: |
+          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
+
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            set -eo pipefail
+            echo '### 🧹 Cleaning old deployment...'
+            sudo rm -rf /var/www/tudu-api/*
+            
+            echo '### 📦 Extracting files...'
+            sudo tar -xzf /tmp/deploy.tar.gz -C /var/www/tudu-api
+            sudo chown -R ${{ secrets.SSH_USER }}:www-data /var/www/tudu-api
+            
+            echo '### ⚙️ Installing dependencies...'
+            cd /var/www/tudu-api
+            npm ci --production
+            
+            echo '### 🗃️ Running database migrations...'
+            npx prisma generate
+            npx prisma migrate deploy
+            
+            echo '### 🚀 Starting application...'
+            pm2 delete tudu-api --silent || true
+            pm2 start ecosystem.config.js
+            pm2 save
+            
+            echo '### ✅ Verification...'
+            pm2 list
+            sleep 5  # Wait for startup
+            pm2 status
+            curl -s http://localhost:3000/health || { echo '❌ Health check failed'; exit 1; }
+          "
