@@ -43,20 +43,13 @@ jobs:
 
       - name: Create deployment package
         run: |
-          # Verifica se .env existe, caso contrário cria um vazio
-          if [ ! -f .env ]; then
-            touch .env
-            echo "DATABASE_URL=\"mysql://user:password@host:port/db\"" >> .env
-            echo "JWT_SECRET=\"your_jwt_secret\"" >> .env
-          fi
-
           tar -czvf deploy.tar.gz \
             dist/ \
             package.json \
             package-lock.json \
             ecosystem.config.js \
-            prisma/ \
-            .env || { echo "::warning::Some files were not included"; true; }
+            prisma/
+          [ -f "deploy.tar.gz" ] || { echo "::error::❌ Failed to create package"; exit 1; }
 
       - name: Deploy to server
         run: |
@@ -64,43 +57,48 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -eo pipefail
-            DEPLOY_DIR=\"/var/www/tudu-api\"
             
-            # Cria diretório se não existir
+            # Configurações básicas
+            DEPLOY_DIR=\"/var/www/tudu-api\"
             mkdir -p \$DEPLOY_DIR
             
-            # Extrai arquivos ignorando erros de arquivos faltantes
-            tar -xzf /tmp/deploy.tar.gz -C \$DEPLOY_DIR --warning=no-absent-files
+            # Limpeza seletiva (preserva node_modules)
+            rm -rf \$DEPLOY_DIR/dist/
+            rm -rf \$DEPLOY_DIR/prisma/
+            rm -f \$DEPLOY_DIR/package*.json
+            rm -f \$DEPLOY_DIR/ecosystem.config.js
+            
+            # Extração simples
+            tar -xzf /tmp/deploy.tar.gz -C \$DEPLOY_DIR
             
             cd \$DEPLOY_DIR
             
-            # Configura .env apenas se não existir
-            if [ ! -f .env ]; then
-              [ -f .env ] && cp .env .env || touch .env
-              echo \"NODE_ENV=production\" >> .env
-              echo \"PORT=3000\" >> .env
-            fi
-            
-            # Atualiza apenas as variáveis necessárias
-            sed -i \"s|DATABASE_URL=.*|DATABASE_URL='${{ secrets.DATABASE_URL }}'|\" .env
-            sed -i \"s|JWT_SECRET=.*|JWT_SECRET='${{ secrets.JWT_SECRET }}'|\" .env
+            # Configuração do .env (substitui completamente)
+            cat > .env <<EOF
+            DATABASE_URL='${{ secrets.DATABASE_URL }}'
+            JWT_SECRET='${{ secrets.JWT_SECRET }}'
+            NODE_ENV=production
+            PORT=3000
+            EOF
             chmod 600 .env
             
-            # Instalação e migrações
+            # Instalação limpa
             npm ci --production
+            
+            # Prisma - Geração e migração
             npx prisma generate
             npx prisma migrate deploy
             
-            # Reinicia a aplicação
+            # Reinicialização segura
             pm2 delete tudu-api --silent || true
             pm2 start ecosystem.config.js --update-env
             pm2 save
             
-            # Verificação
-            sleep 5
-            curl -sSf http://localhost:3000/health || {
-              echo '::error::❌ Health check failed';
-              pm2 logs tudu-api --lines 50;
-              exit 1;
-            }
+            # Verificação com timeout
+            sleep 10
+            if ! curl -sSf http://localhost:3000/health; then
+              echo '::error::❌ Health check failed'
+              pm2 logs tudu-api --lines 100
+              exit 1
+            fi
           "
