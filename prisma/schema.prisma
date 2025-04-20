@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "./node_modules/.prisma/client"
 }
 
 datasource db {
@@ -9,7 +10,7 @@ datasource db {
 }
 
 model Cliente {
-  id_cliente Int    @id @default(autoincrement())
+  id_cliente      Int      @id @default(autoincrement())
   telefone        String?
   nome            String
   sobrenome       String
