@@ -35,9 +35,6 @@ jobs:
 
           chmod 600 ~/.ssh/config
 
-          # Adicione a fingerprint do seu servidor
-          echo "${{ secrets.SSH_HOST }} ssh-ed25519 AAAAC3..." >> ~/.ssh/known_hosts
-
       - name: Build application
         run: |
           npm ci
@@ -60,33 +57,15 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -eo pipefail
-            
-            # 1. Cria diretório sem sudo (se possível)
-            mkdir -p /var/www/tudu-api || {
-              echo '::warning::⚠️ Tentando com sudo...'
-              sudo mkdir -p /var/www/tudu-api
-            }
-            
-            # 2. Remove arquivos antigos
             cd /var/www/tudu-api
-            sudo rm -rf ./* || {
-              echo '::warning::⚠️ Tentando sem sudo...'
-              rm -rf ./*
-            }
             
-            # 3. Extrai arquivos
-            sudo tar -xzf /tmp/deploy.tar.gz -C . || {
-              echo '::warning::⚠️ Tentando sem sudo...'
-              tar -xzf /tmp/deploy.tar.gz -C .
-            }
+            # Limpa o diretório
+            rm -rf ./*
             
-            # 4. Ajusta permissões
-            sudo chown -R $USER:www-data . || {
-              echo '::warning::⚠️ Tentando sem sudo...'
-              chown -R $USER:www-data .
-            }
+            # Extrai os arquivos
+            tar -xzf /tmp/deploy.tar.gz -C .
             
-            # 5. Configura .env
+            # Configura .env
             cat <<EOF > .env
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             JWT_SECRET=${{ secrets.JWT_SECRET }}
@@ -95,14 +74,14 @@ jobs:
             EOF
             chmod 600 .env
             
-            # 6. Instala dependências
+            # Instala dependências
             npm ci --production
             
-            # 7. Executa migrações
+            # Executa migrações
             npx prisma generate
             npx prisma migrate deploy
             
-            # 8. Inicia aplicação
+            # Inicia a aplicação
             pm2 delete tudu-api --silent || true
             pm2 start ecosystem.config.js
             pm2 save
