@@ -32,7 +32,6 @@ jobs:
           echo "  IdentityFile ~/.ssh/deploy_key" >> ~/.ssh/config
           echo "  StrictHostKeyChecking no" >> ~/.ssh/config
           echo "  ConnectTimeout 15" >> ~/.ssh/config
-
           chmod 600 ~/.ssh/config
 
       - name: Build application
@@ -58,22 +57,19 @@ jobs:
           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -eo pipefail
             
-            # Configurações básicas
+            # 1. Configuração de diretórios e permissões
             DEPLOY_DIR=\"/var/www/tudu-api\"
-            mkdir -p \$DEPLOY_DIR
+            sudo mkdir -p \$DEPLOY_DIR
+            sudo chown -R ${{ secrets.SSH_USER }}:${{ secrets.SSH_USER }} \$DEPLOY_DIR
             
-            # Limpeza seletiva (preserva node_modules)
-            rm -rf \$DEPLOY_DIR/dist/
-            rm -rf \$DEPLOY_DIR/prisma/
-            rm -f \$DEPLOY_DIR/package*.json
-            rm -f \$DEPLOY_DIR/ecosystem.config.js
+            # 2. Limpeza segura (não remove node_modules)
+            cd \$DEPLOY_DIR
+            rm -rf dist/ package.json package-lock.json ecosystem.config.js prisma/
             
-            # Extração simples
+            # 3. Extração do pacote
             tar -xzf /tmp/deploy.tar.gz -C \$DEPLOY_DIR
             
-            cd \$DEPLOY_DIR
-            
-            # Configuração do .env (substitui completamente)
+            # 4. Configuração do ambiente
             cat > .env <<EOF
             DATABASE_URL='${{ secrets.DATABASE_URL }}'
             JWT_SECRET='${{ secrets.JWT_SECRET }}'
@@ -82,19 +78,17 @@ jobs:
             EOF
             chmod 600 .env
             
-            # Instalação limpa
+            # 5. Instalação e setup do Prisma
             npm ci --production
-            
-            # Prisma - Geração e migração
             npx prisma generate
             npx prisma migrate deploy
             
-            # Reinicialização segura
+            # 6. Gerenciamento de processos
             pm2 delete tudu-api --silent || true
             pm2 start ecosystem.config.js --update-env
             pm2 save
             
-            # Verificação com timeout
+            # 7. Verificação
             sleep 10
             if ! curl -sSf http://localhost:3000/health; then
               echo '::error::❌ Health check failed'
