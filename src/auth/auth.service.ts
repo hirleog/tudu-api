@@ -48,7 +48,7 @@ export class AuthService {
       role: 'cliente', // Identifica o tipo de usuário
     };
     return {
-      teste: 'teste',
+      teste: 'pinto loko',
       access_token: this.jwtService.sign(payload),
     };
   }
