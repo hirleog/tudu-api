@@ -42,7 +42,16 @@ export class CardsController {
   update(
     @Param('id_pedido') id_pedido: string,
     @Body() updatedCard: UpdateCardDto,
+    @Req() req: any, // Injetando o contexto da requisição
   ) {
+    // const id_prestador = req.user?.id_prestador;
+    // // Adicionando um log para verificar o valor de id_prestador
+    // console.log('ID Prestador extraído do token JWT:', id_prestador);
+
+    // if (!id_prestador) {
+    //   throw new Error('id_prestador não encontrado no token JWT');
+    // }
+
     return this.cardsService.update(id_pedido, updatedCard); // Atualiza um card
   }
 
