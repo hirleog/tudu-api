@@ -12,21 +12,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Configuração SSH corrigida
+      # Configuração SSH com tratamento de erros
       - name: Configure SSH
         run: |
+          set -e  # Faz o script falhar imediatamente em caso de erro
+          echo "Configuring SSH..."
+
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # Escreve a chave SSH com verificação
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          # Config file simplificado
-          echo -e "Host ${{ secrets.SSH_HOST }}\n\tHostName ${{ secrets.SSH_HOST }}\n\tUser ${{ secrets.SSH_USER }}\n\tIdentityFile ~/.ssh/deploy_key\n\tStrictHostKeyChecking no" > ~/.ssh/config
+          # Verifica se a chave foi escrita corretamente
+          if [ ! -s ~/.ssh/deploy_key ]; then
+            echo "Error: SSH key file is empty!"
+            exit 1
+          fi
 
-          # ssh-keyscan corrigido (removida a flag problemática)
-          ssh-keyscan ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          # Configuração do SSH
+          cat <<EOF > ~/.ssh/config
+          Host ${{ secrets.SSH_HOST || '89.116.73.70' }}
+            HostName ${{ secrets.SSH_HOST || '89.116.73.70' }}
+            User ${{ secrets.SSH_USER || 'deployer' }}
+            StrictHostKeyChecking no
+            IdentityFile ~/.ssh/deploy_key
+            LogLevel ERROR
+          EOF
 
-          # Teste de conexão
-          ssh -o BatchMode=yes -o ConnectTimeout=5 ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} exit
+          chmod 600 ~/.ssh/config
+
+          # Scan do host com tratamento de erro
+          echo "Scanning host keys..."
+          ssh-keyscan -H "${{ secrets.SSH_HOST || '89.116.73.70' }}" >> ~/.ssh/known_hosts 2>&1
+
+          echo "SSH configuration complete!"
+          echo "Testing connection..."
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=5 ${{ secrets.SSH_USER || 'deployer' }}@${{ secrets.SSH_HOST || '89.116.73.70' }} echo "SSH connection test successful!"
 
       # Build da aplicação
       - name: Build application
