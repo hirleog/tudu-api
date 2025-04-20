@@ -14,26 +14,37 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify Secrets
+        run: |
+          echo "Verificando configuração dos secrets..."
+          if [ -z "${{ secrets.SSH_HOST }}" ]; then
+            echo "::error::❌ Secret SSH_HOST não está configurado"
+            echo "Configure em: Settings → Secrets → Actions"
+            exit 1
+          fi
+          if [ -z "${{ secrets.SSH_USER }}" ]; then
+            echo "::error::❌ Secret SSH_USER não está configurado"
+            exit 1
+          fi
+          if [ -z "${{ secrets.API_TUDU_SSH_KEY }}" ]; then
+            echo "::error::❌ Secret API_TUDU_SSH_KEY não está configurado"
+            exit 1
+          fi
+          echo "✅ Todos os secrets necessários estão configurados"
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
           cache: 'npm'
 
-      # Configuração SSH com verificação de secrets
+      # Configuração SSH simplificada
       - name: Configure SSH
         run: |
-          # Verificação obrigatória dos secrets
-          if [ -z "${{ secrets.SSH_HOST }}" ] || [ -z "${{ secrets.SSH_USER }}" ] || [ -z "${{ secrets.API_TUDU_SSH_KEY }}" ]; then
-            echo "::error::❌ Secrets não configurados: Verifique SSH_HOST, SSH_USER e API_TUDU_SSH_KEY"
-            exit 1
-          fi
-
           mkdir -p ~/.ssh
           echo "${{ secrets.API_TUDU_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          # Config file com escape correto
           echo "Host ${{ secrets.SSH_HOST }}" > ~/.ssh/config
           echo "  HostName ${{ secrets.SSH_HOST }}" >> ~/.ssh/config
           echo "  User ${{ secrets.SSH_USER }}" >> ~/.ssh/config
@@ -43,84 +54,51 @@ jobs:
 
           chmod 600 ~/.ssh/config
 
-          # Adiciona fingerprint (substitua pela do seu servidor)
+          # Adicione a fingerprint do seu servidor (obtenha com ssh-keyscan)
           echo "${{ secrets.SSH_HOST }} ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAA..." >> ~/.ssh/known_hosts
 
-      # Build da aplicação
       - name: Build application
         run: |
           npm ci
           npm run build
-          [ -d "dist" ] || { echo "::error::❌ Build failed - dist folder missing"; exit 1; }
-          [ -f "ecosystem.config.js" ] || { echo "::error::❌ Missing ecosystem.config.js"; exit 1; }
+          [ -d "dist" ] || { echo "::error::❌ Build failed"; exit 1; }
 
-      # Criação do pacote
       - name: Create deployment package
         run: |
-          FILES="dist/ package.json package-lock.json ecosystem.config.js prisma/"
-          [ -f ".env" ] && FILES="$FILES .env" || echo "ℹ️ .env não incluído - será criado no servidor"
-
-          tar -czvf deploy.tar.gz $FILES
+          tar -czvf deploy.tar.gz \
+            dist/ \
+            package.json \
+            package-lock.json \
+            ecosystem.config.js \
+            prisma/
           [ -f "deploy.tar.gz" ] || { echo "::error::❌ Failed to create package"; exit 1; }
-          echo "✅ Package contents:"
-          tar -tzf deploy.tar.gz
 
-      # Deploy no servidor
       - name: Deploy to server
         run: |
-          scp -o ConnectTimeout=15 \
-              -i ~/.ssh/deploy_key \
-              deploy.tar.gz \
-              ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/ || {
-            echo "::error::❌ Falha no upload do pacote";
-            exit 1;
-          }
+          scp -i ~/.ssh/deploy_key deploy.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
 
-          ssh -o ConnectTimeout=15 \
-              -i ~/.ssh/deploy_key \
-              ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -eo pipefail
-            echo '1. 🧹 Preparando ambiente...'
             sudo mkdir -p /var/www/tudu-api
             cd /var/www/tudu-api
             sudo rm -rf ./*
-            
-            echo '2. 📦 Extraindo arquivos...'
             sudo tar -xzf /tmp/deploy.tar.gz -C .
             sudo chown -R ${{ secrets.SSH_USER }}:www-data .
             
-            echo '3. 🔑 Configurando .env...'
+            # Cria .env a partir de secrets
             cat <<EOF > .env
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             JWT_SECRET=${{ secrets.JWT_SECRET }}
-            PORT=3000
             NODE_ENV=production
+            PORT=3000
             EOF
             chmod 600 .env
             
-            echo '4. ⚙️ Instalando dependências...'
             npm ci --production
-            
-            echo '5. 🗃️ Executando migrações...'
             npx prisma generate
             npx prisma migrate deploy
-            
-            echo '6. 🚀 Iniciando aplicação...'
             pm2 delete tudu-api --silent || true
             pm2 start ecosystem.config.js
             pm2 save
-            
-            echo '7. ✅ Verificação final...'
-            echo '=== Arquivos ==='
-            ls -la
-            echo '=== PM2 Status ==='
             pm2 list
-            echo '=== Health Check ==='
-            curl -sSf http://localhost:3000/health || {
-              echo '::error::❌ Health check failed';
-              exit 1;
-            }
-          " || {
-            echo "::error::❌ Falha durante o deploy remoto";
-            exit 1;
-          }
+          "
