@@ -35,15 +35,71 @@ export class CardsService {
     });
   }
 
-  async findAll(id_cliente: string): Promise<card[]> {
+  // async findAll(prestadorInfo: { telefone?: string } | null): Promise<card[]> {
+  //   const { telefone } = prestadorInfo || {};
+
+  //   console.log('Prestador Info:', prestadorInfo); // Log para verificar o prestadorInfo
+
+  //   const cards = await this.prisma.card.findMany({
+  //     where: prestadorInfo && telefone
+  //       ? {
+  //           Cliente: {
+  //             telefone: {
+  //               not: telefone, // Exclui os cards cujo telefone do cliente seja igual ao do prestador
+  //             },
+  //           },
+  //         }
+  //       : {}, // Se for cliente ou não houver telefone, não aplica filtros
+  //     include: {
+  //       Candidatura: true, // Inclui as informações da tabela Candidatura
+  //     },
+  //   });
+
+  async findAll(
+    prestadorInfo: {
+      telefone?: string;
+      cpf?: string;
+      email?: string;
+      id_cliente?: number;
+    } | null,
+    clienteInfo: { id_cliente?: number } | null,
+  ): Promise<card[]> {
+    const { telefone, cpf, email } = prestadorInfo || {};
+    const { id_cliente } = clienteInfo || {};
+
+    console.log('Prestador Info:', prestadorInfo); // Log para verificar o prestadorInfo
+    console.log('Cliente Info:', clienteInfo); // Log para verificar o clienteInfo
+
+    const filters = [];
+
+    // Adiciona condições apenas para os campos que não são nulos ou indefinidos
+    if (telefone) {
+      filters.push({ telefone: telefone });
+    }
+    if (cpf) {
+      filters.push({ cpf: cpf });
+    }
+    if (email) {
+      filters.push({ email: email });
+    }
+
     const cards = await this.prisma.card.findMany({
-      where: {
-        id_cliente: parseInt(id_cliente), // Filtra os cards pelo id_cliente
-      },
+      where: id_cliente
+        ? {
+            id_cliente: id_cliente, // Mostra apenas os cards do cliente logado
+          }
+        : {
+            NOT: {
+              Cliente: {
+                OR: filters, // Aplica as condições dinamicamente para prestadores
+              },
+            },
+          },
       include: {
         Candidatura: true, // Inclui as informações da tabela Candidatura
       },
     });
+
     // Transformar os dados para incluir o endereço como um objeto
     return cards.map((card) => ({
       id_pedido: card.id_pedido,
@@ -132,7 +188,6 @@ export class CardsService {
       where: { id_pedido },
       include: { Candidatura: true }, // Inclui as candidaturas existentes
     });
-
 
     if (!existingCard) {
       throw new NotFoundException(`Card with ID ${id_pedido} not found`);

@@ -13,10 +13,14 @@ import { CardsService } from './cards.service';
 import { CreateCardDto } from './dto/create-card.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { UpdateCardDto } from './dto/update-card.dto';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @Controller('cards')
 export class CardsController {
-  constructor(private readonly cardsService: CardsService) {}
+  constructor(
+    private readonly cardsService: CardsService,
+    private readonly prisma: PrismaService, // Injeta o PrismaService
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Post()
@@ -26,10 +30,53 @@ export class CardsController {
 
   @UseGuards(JwtAuthGuard)
   @Get()
-  findAll(@Req() req: any) {
-    const id_cliente = req.user.id_cliente; // Obtém o id_cliente do token JWT
+  async findAll(@Req() req: any) {
+    let prestadorInfo = null;
+    let clienteInfo = null;
 
-    return this.cardsService.findAll(id_cliente); // Retorna todos os cards
+    // Verifica se o usuário é um prestador
+    if (req.user.role === 'prestador') {
+      // Busca as informações do prestador na tabela
+      const prestador = await this.prisma.prestador.findUnique({
+        where: { id_prestador: req.user.sub },
+        select: {
+          cpf: true,
+          email: true,
+          telefone: true,
+        },
+      });
+
+      if (!prestador) {
+        throw new Error('Prestador não encontrado.');
+      }
+
+      prestadorInfo = {
+        cpf: prestador.cpf,
+        email: prestador.email,
+        telefone: prestador.telefone,
+      };
+    } else {
+      // Verifica se o usuário é um prestador
+      // Busca as informações do prestador na tabela
+      const cliente = await this.prisma.cliente.findUnique({
+        where: { id_cliente: req.user.sub },
+        select: {
+          id_cliente: true, // Inclui o id_cliente
+          cpf: true,
+          email: true,
+          telefone: true,
+        },
+      });
+
+      if (!cliente) {
+        throw new Error('cliente não encontrado.');
+      }
+
+      clienteInfo = cliente;
+    }
+    console.log('clienteInfo InfoOOOO:', clienteInfo); // Log para verificar o prestadorInfo
+
+    return this.cardsService.findAll(prestadorInfo, clienteInfo);
   }
 
   @UseGuards(JwtAuthGuard)

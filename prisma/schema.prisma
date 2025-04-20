@@ -9,7 +9,7 @@ datasource db {
 }
 
 model Cliente {
-  id_cliente      Int      @id @default(autoincrement())
+  id_cliente Int    @id @default(autoincrement())
   telefone        String?
   nome            String
   sobrenome       String

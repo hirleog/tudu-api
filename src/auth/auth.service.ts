@@ -29,7 +29,6 @@ export class AuthService {
     const prestador = await this.prisma.prestador.findUnique({
       where: { email },
     });
-    console.log('Prestador encontrado:', prestador); // Adicione este log
 
     if (!prestador) {
       throw new UnauthorizedException('Email ou senha inválidos.');
@@ -44,17 +43,22 @@ export class AuthService {
   }
 
   async loginCliente(cliente: any) {
-    const payload = { sub: cliente.id_cliente, email: cliente.email };
+    const payload = {
+      sub: cliente.id_cliente,
+      role: 'cliente', // Identifica o tipo de usuário
+    };
     return {
       access_token: this.jwtService.sign(payload),
     };
   }
 
   async loginPrestador(prestador: any) {
-    const payload = { sub: prestador.id_prestador, email: prestador.email };
-    console.log('payloadddd', prestador);
+    const payload = {
+      sub: prestador.id_prestador,
+      role: 'prestador', // Identifica o tipo de usuário
+    };
     return {
-      prestador: 'true',
+      role: 'prestador', // Identifica o tipo de usuário
       access_token: this.jwtService.sign(payload),
     };
   }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateClienteDto } from '../dto/create-cliente.dto';
 import * as bcrypt from 'bcrypt';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class ClienteService {
@@ -49,7 +50,7 @@ export class ClienteService {
     }
 
     // Cria o registro na tabela Cliente
-    const cliente = await this.prisma.cliente.create({
+    const payload = await this.prisma.cliente.create({
       data: {
         telefone: createClienteDto.telefone,
         nome: createClienteDto.nome,
@@ -66,7 +67,7 @@ export class ClienteService {
       },
     });
 
-    return cliente;
+    return payload;
   }
 
   async findAllClientes() {
