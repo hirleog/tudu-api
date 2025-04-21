@@ -7,16 +7,16 @@ async function bootstrap() {
 
   const isDev = process.env.NODE_ENV !== 'production';
 
-  if (isDev) {
-    app.enableCors({
-      origin: [
-        'http://localhost:4200',
-        'http://localhost:3000',
-        'http://localhost:3001',
-      ],
-      credentials: true,
-    });
-  }
+  app.enableCors({
+    origin: isDev
+      ? [
+          'http://localhost:4200',
+          'http://localhost:3000',
+          'http://localhost:3001',
+        ]
+      : ['https://use-tudu.com.br', 'https://professional.use-tudu.com.br'],
+    credentials: true,
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
