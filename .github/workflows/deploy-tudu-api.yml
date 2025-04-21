@@ -176,7 +176,7 @@ jobs:
             
             cd \$DEPLOY_DIR
             
-            # 4. Configuração do .env
+            # 4. Configuração do .env 
             cat > .env <<EOF
             DATABASE_URL='${{ secrets.DATABASE_URL }}'
             JWT_SECRET='${{ secrets.JWT_SECRET }}'
