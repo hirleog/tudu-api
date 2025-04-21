@@ -1,23 +1,27 @@
 import { Module } from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { AuthController } from './auth.controller';
+import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { JwtStrategy } from './jwt.strategy/jwt.strategy';
 import * as dotenv from 'dotenv';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { JwtClienteStrategy, JwtPrestadorStrategy } from './jwt.strategy/jwt.strategy';
 
 dotenv.config();
 
 @Module({
   imports: [
     PassportModule,
-    JwtModule.register({
-      secret: 'ewfj/DwBZAe0Z7IVho8zrn89HN9VI7nVTzVK9/JIlAY=', // Substitua pela sua chave secreta
-      signOptions: { expiresIn: '1h' }, // Token expira em 1 hora
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET_CLIENTE'), // Chave padrão para cliente
+        signOptions: { expiresIn: '1h' },
+      }),
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, PrismaService, JwtStrategy],
+  providers: [AuthService, PrismaService, JwtClienteStrategy, JwtPrestadorStrategy],
 })
 export class AuthModule {}

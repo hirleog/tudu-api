@@ -45,21 +45,31 @@ export class AuthService {
   async loginCliente(cliente: any) {
     const payload = {
       sub: cliente.id_cliente,
-      role: 'cliente', // Identifica o tipo de usuário
+      role: 'cliente',
     };
+
+    const accessToken = this.jwtService.sign(payload, {
+      secret: process.env.JWT_SECRET_CLIENTE,
+    });
+
     return {
-      access_token: this.jwtService.sign(payload),
+      role: 'cliente',
+      access_token: accessToken,
     };
   }
 
   async loginPrestador(prestador: any) {
     const payload = {
       sub: prestador.id_prestador,
-      role: 'prestador', // Identifica o tipo de usuário
+      role: 'prestador',
     };
+    const accessToken = this.jwtService.sign(payload, {
+      secret: process.env.JWT_SECRET_PRESTADOR,
+    });
+
     return {
       role: 'prestador',
-      access_token: this.jwtService.sign(payload),
+      access_token: accessToken,
     };
   }
 }

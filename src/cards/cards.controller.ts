@@ -14,6 +14,9 @@ import { CreateCardDto } from './dto/create-card.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { UpdateCardDto } from './dto/update-card.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { AuthGuard } from '@nestjs/passport';
+import { MultiRoleAuthGuard } from 'src/auth/guards/multi-role-auth.guard';
+import { JwtClienteStrategy } from 'src/auth/jwt.strategy/jwt.strategy';
 
 @Controller('cards')
 export class CardsController {
@@ -22,13 +25,13 @@ export class CardsController {
     private readonly prisma: PrismaService, // Injeta o PrismaService
   ) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtClienteStrategy)
   @Post()
   create(@Body() newCard: CreateCardDto, candidato: UpdateCardDto) {
     return this.cardsService.create(newCard); // Retorna o resultado do serviço
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(MultiRoleAuthGuard)
   @Get()
   async findAll(@Req() req: any) {
     let prestadorInfo = null;
@@ -37,6 +40,9 @@ export class CardsController {
     // Verifica se o usuário é um prestador
     if (req.user.role === 'prestador') {
       // Busca as informações do prestador na tabela
+      // console.log('User Role prestador:', req.user?.role); // Verifique o role aqui também
+      console.log('ID Prestador (req.user.sub):', req.user.sub);
+
       const prestador = await this.prisma.prestador.findUnique({
         where: { id_prestador: req.user.sub },
         select: {
@@ -68,13 +74,14 @@ export class CardsController {
         },
       });
 
+      console.log('User Role cliente:', req.user?.role); // Verifique o role aqui também
+
       if (!cliente) {
         throw new Error('cliente não encontrado.');
       }
 
       clienteInfo = cliente;
     }
-    console.log('clienteInfo InfoOOOO:', clienteInfo); // Log para verificar o prestadorInfo
 
     return this.cardsService.findAll(prestadorInfo, clienteInfo);
   }
