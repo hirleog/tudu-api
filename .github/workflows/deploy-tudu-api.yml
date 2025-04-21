@@ -165,8 +165,9 @@ jobs:
             set -eo pipefail
             
             # 1. Configuração de diretório
-            DEPLOY_DIR=\"\$HOME/tudu-api\"
-            mkdir -p \$DEPLOY_DIR
+            DEPLOY_DIR=\"/var/www/tudu-api\"
+            sudo mkdir -p \$DEPLOY_DIR
+            sudo chown -R deployer:deployer \$DEPLOY_DIR
             
             # 2. Limpeza seletiva
             rm -rf \$DEPLOY_DIR/dist/ \$DEPLOY_DIR/package*.json \$DEPLOY_DIR/prisma/ \$DEPLOY_DIR/ecosystem.config.js
@@ -182,6 +183,7 @@ jobs:
             JWT_SECRET='${{ secrets.JWT_SECRET }}'
             NODE_ENV=production
             PORT=3000
+            # Adicione outras variáveis necessárias aqui
             EOF
             chmod 600 .env
             
