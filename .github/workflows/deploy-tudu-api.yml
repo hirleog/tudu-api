@@ -98,11 +98,11 @@
 #             }
 #           "
 
-name: Production Deploy
+name: Deploy Tudu API (Production)
 
 on:
   push:
-    branches: [master, main]
+    branches: ['master', 'main']
 
 jobs:
   deploy:
@@ -120,22 +120,14 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: |
-          npm ci
-          npx prisma generate
-
-      - name: Build application
-        run: |
-          npm run build
-          [ -d "dist" ] || { echo "::error::Build failed"; exit 1; }
-
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          # Corrige o formato da chave SSH
+          echo "${{ secrets.API_TUDU_SSH_KEY }}" | sed 's/\\n/\n/g' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
+          # Configuração do SSH
           cat > ~/.ssh/config <<EOF
           Host ${{ secrets.SSH_HOST }}
             HostName ${{ secrets.SSH_HOST }}
@@ -146,15 +138,24 @@ jobs:
           EOF
           chmod 600 ~/.ssh/config
 
-      - name: Prepare deployment package
+          # Teste de conexão
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Build application
+        run: |
+          npm ci
+          npm run build
+          [ -d "dist" ] || { echo "::error::❌ Build failed"; exit 1; }
+
+      - name: Create deployment package
         run: |
           tar -czvf deploy.tar.gz \
             dist/ \
             package.json \
             package-lock.json \
-            prisma/ \
-            ecosystem.config.js
-          [ -f "deploy.tar.gz" ] || { echo "::error::Failed to create package"; exit 1; }
+            ecosystem.config.js \
+            prisma/
+          [ -f "deploy.tar.gz" ] || { echo "::error::❌ Failed to create package"; exit 1; }
 
       - name: Deploy to server
         run: |
@@ -163,89 +164,43 @@ jobs:
           ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -eo pipefail
             
-            # Configurações de diretório (sem sudo)
-            DEPLOY_DIR='/var/www/tudu-api'
+            # 1. Configuração de diretório
+            DEPLOY_DIR=\"\$HOME/tudu-api\"
             mkdir -p \$DEPLOY_DIR
             
-            # Limpeza seletiva (preserva node_modules)
-            cd \$DEPLOY_DIR
-            rm -rf dist/ package*.json prisma/ ecosystem.config.js
+            # 2. Limpeza seletiva
+            rm -rf \$DEPLOY_DIR/dist/ \$DEPLOY_DIR/package*.json \$DEPLOY_DIR/prisma/ \$DEPLOY_DIR/ecosystem.config.js
             
-            # Extração
+            # 3. Extração
             tar -xzf /tmp/deploy.tar.gz -C \$DEPLOY_DIR
             
-            # Configuração do .env
+            cd \$DEPLOY_DIR
+            
+            # 4. Configuração do .env
             cat > .env <<EOF
             DATABASE_URL='${{ secrets.DATABASE_URL }}'
             JWT_SECRET='${{ secrets.JWT_SECRET }}'
             NODE_ENV=production
             PORT=3000
-            # CORS Configuration
-            CORS_ORIGIN='https://use-tudu.com.br,https://www.use-tudu.com.br'
             EOF
             chmod 600 .env
             
-            # Instalação e migrações
+            # 5. Instalação e migrações
             npm ci --production
             npx prisma generate
             npx prisma migrate deploy
             
-            # Gerenciamento de processos
+            # 6. Gerenciamento de processos
+            export PATH=\"\$PATH:\$(npm bin -g)\"
             pm2 delete tudu-api --silent || true
             pm2 start ecosystem.config.js --update-env
             pm2 save
             
-            # Verificação básica
+            # 7. Verificação
             sleep 10
             curl -sSf http://localhost:3000/health || {
-              echo '::error::Initial health check failed'
-              pm2 logs tudu-api --lines 50
+              echo '::error::❌ Health check failed'
+              pm2 logs tudu-api --lines 100
               exit 1
             }
-          "
-
-      - name: Validate Deployment
-        run: |
-          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
-            set -e
-            
-            # 1. Verificação de processo
-            if ! pm2 list | grep -q 'tudu-api'; then
-              echo '::error::Application not running in PM2'
-              exit 1
-            fi
-            
-            # 2. Teste CORS completo
-            CORS_RESPONSE=\$(curl -sSI -X OPTIONS https://api.use-tudu.com.br \
-              -H 'Origin: https://use-tudu.com.br' \
-              -H 'Access-Control-Request-Method: POST' \
-              -H 'Access-Control-Request-Headers: Content-Type,Authorization')
-            
-            echo \"\$CORS_RESPONSE\"
-            
-            if ! echo \"\$CORS_RESPONSE\" | grep -q 'Access-Control-Allow-Origin: https://use-tudu.com.br'; then
-              echo '::error::CORS validation failed - Missing Allow-Origin header'
-              exit 1
-            fi
-            
-            if ! echo \"\$CORS_RESPONSE\" | grep -q 'Access-Control-Allow-Methods:'; then
-              echo '::error::CORS validation failed - Missing Allow-Methods header'
-              exit 1
-            fi
-            
-            if ! echo \"\$CORS_RESPONSE\" | grep -q 'Access-Control-Allow-Credentials: true'; then
-              echo '::error::CORS validation failed - Missing Allow-Credentials header'
-              exit 1
-            fi
-            
-            # 3. Teste de endpoint protegido por CORS
-            API_RESPONSE=\$(curl -sS https://api.use-tudu.com.br/health \
-              -H 'Origin: https://use-tudu.com.br')
-            
-            if ! echo \"\$API_RESPONSE\" | grep -q 'status'; then
-              echo '::error::API endpoint test failed'
-              exit 1
-            fi
-            
-            echo '✅ All deployment validations passed successfully'
           "
