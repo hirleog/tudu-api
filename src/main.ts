@@ -9,7 +9,7 @@ async function bootstrap() {
     origin: [
       'http://localhost:4200',
       'https://use-tudu.com.br',
-      'http://localhost:3000',
+      'http://localhost:3001',
     ], // ou '*' para permitir qualquer origem
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
@@ -23,7 +23,8 @@ async function bootstrap() {
       transform: true, // Transforma os dados para os tipos esperados no DTO
     }),
   );
-  await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
+  app.set('trust proxy', true);
+  await app.listen(process.env.PORT ?? 3001, '0.0.0.0');
   // await app.listen(3000, '0.0.0.0'); // Força escutar em IPv4 e IPv6
 
   const allowedOrigins = ['http://localhost:4200', 'https://use-tudu.com.br'];

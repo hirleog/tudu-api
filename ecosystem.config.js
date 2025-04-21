@@ -10,7 +10,7 @@ module.exports = {
       max_memory_restart: '1G', // Reinicia se usar mais de 1GB RAM
       env: {
         NODE_ENV: 'production', // Ambiente de produção
-        PORT: 3000, // Porta padrão (ajuste se necessário)
+        PORT: 3001, // Porta padrão (ajuste se necessário)
         DATABASE_URL: 'mysql://root:Masterfut%40123@89.116.73.70:3306/tududb',
       },
       env_production: {
