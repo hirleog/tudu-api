@@ -9,7 +9,7 @@ async function bootstrap() {
     origin: [
       'http://localhost:4200',
       'https://use-tudu.com.br',
-      'http://localhost:3000'
+      'http://localhost:3000',
     ], // ou '*' para permitir qualquer origem
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
@@ -24,13 +24,9 @@ async function bootstrap() {
     }),
   );
   // await app.listen(process.env.PORT ?? 3000);
-  await app.listen(3000, '0.0.0.0');  // Força escutar em IPv4 e IPv6
+  await app.listen(3000, '0.0.0.0'); // Força escutar em IPv4 e IPv6
 
-  const allowedOrigins = [
-    'http://localhost:4200',
-    'https://seusite.com',
-    'https://outrosite.com',
-  ];
+  const allowedOrigins = ['http://localhost:4200', 'https://use-tudu.com.br'];
 
   app.enableCors({
     origin: (origin, callback) => {
