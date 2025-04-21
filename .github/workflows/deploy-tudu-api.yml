@@ -165,7 +165,7 @@ jobs:
             set -eo pipefail
             
             # 1. Configuração de diretório
-            DEPLOY_DIR=\"\var/www/tudu-api\"
+            DEPLOY_DIR=\"\$HOME/tudu-api\"
             mkdir -p \$DEPLOY_DIR
             
             # 2. Limpeza seletiva
