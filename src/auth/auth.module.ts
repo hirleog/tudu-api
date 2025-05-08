@@ -17,7 +17,7 @@ dotenv.config();
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET_CLIENTE'), // Chave padrão para cliente
-        signOptions: { expiresIn: '1h' },
+        signOptions: { expiresIn: '7d' },
       }),
     }),
   ],

@@ -9,8 +9,8 @@ import { Type } from 'class-transformer';
 
 export class CandidaturaDto {
   @IsNumber()
-  prestador_id: number; 
-  
+  prestador_id: number;
+
   @IsOptional()
   @IsString()
   valor_negociado?: string;
@@ -21,7 +21,7 @@ export class CandidaturaDto {
 
   @IsOptional()
   status?: string;
-  
+
   @IsOptional()
   @IsString()
   data_finalizacao?: string;

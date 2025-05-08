@@ -98,6 +98,9 @@ export class CardsController {
     @Body() updatedCard: UpdateCardDto,
     @Req() req: any, // Injetando o contexto da requisição
   ) {
+
+    console.log('Existing Card:', updatedCard); // Log para verificar o card existente
+
     // const id_prestador = req.user?.id_prestador;
     // // Adicionando um log para verificar o valor de id_prestador
     // console.log('ID Prestador extraído do token JWT:', id_prestador);

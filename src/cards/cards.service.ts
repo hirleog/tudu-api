@@ -119,15 +119,6 @@ export class CardsService {
       // status: card.status || false,
       // data_finalizacao: card.data_finalizacao || null,
 
-      candidaturas: card.Candidatura.map((candidatura) => ({
-        id_candidatura: 0,
-        // prestador_id: candidatura.prestador_id,
-        valor_negociado: candidatura.valor_negociado || '',
-        horario_negociado: candidatura.horario_negociado || null,
-        data_candidatura: candidatura.data_candidatura,
-        status: candidatura.status || false,
-      })),
-
       address: {
         cep: card.cep,
         street: card.street,
@@ -137,6 +128,15 @@ export class CardsService {
         number: card.number,
         complement: card.complement || null,
       },
+
+      candidaturas: card.Candidatura.map((candidatura) => ({
+        id_candidatura: candidatura.id_candidatura || '',
+        // prestador_id: candidatura.prestador_id,
+        valor_negociado: candidatura.valor_negociado || '',
+        horario_negociado: candidatura.horario_negociado || null,
+        data_candidatura: candidatura.data_candidatura,
+        status: candidatura.status || false,
+      })),
     }));
   }
 
@@ -218,42 +218,53 @@ export class CardsService {
       include: { Candidatura: true },
     });
 
-    // Adiciona uma nova candidatura se fornecida no DTO
-    // if (updateCardDto.candidaturas) {
-    //   const candidaturaDtos = updateCardDto.candidaturas;
-    //   debugger;
+    // Atualiza ou cria novas candidaturas
+    if (updateCardDto.candidaturas) {
+      const candidaturaDtos = updateCardDto.candidaturas;
 
-    //   for (const candidaturaDto of candidaturaDtos) {
-    //     // const payload = {
-    //     //   prestador_id: candidaturaDto.prestador_id,
-    //     //   valor_negociado: candidaturaDto.valor_negociado,
+      for (const candidaturaDto of candidaturaDtos) {
+        // Verifica se a candidatura já existe
+        const existingCandidatura = await this.prisma.candidatura.findUnique({
+          where: {
+            id_pedido_prestador_id: {
+              id_pedido: id_pedido,
+              prestador_id: candidaturaDto.prestador_id,
+            },
+          },
+        });
 
-    //     //   horario_negociado: candidaturaDto.horario_negociado,
-    //     //   status: candidaturaDto.status,
-    //     //   data_candidatura: new Date(), // Data atual
-    //     // };
-    //     await this.prisma.candidatura.create({
-    //       data: {
-    //         valor_negociado: candidaturaDto.valor_negociado,
-    //         horario_negociado: candidaturaDto.horario_negociado,
-    //         status: candidaturaDto.status,
-    //         data_candidatura: new Date(),
-    //         Card: {
-    //           connect: { id_pedido: id_pedido },
-    //         },
-    //         // Prestador: {
-    //         Prestador: {
-    //           connect: { id_prestador: id_prestador }, // Ensure `prestador_id` is connected properly
-    //         },
+        if (existingCandidatura) {
+          // Atualiza a candidatura existente
+          await this.prisma.candidatura.update({
+            where: { id_candidatura: existingCandidatura.id_candidatura },
+            data: {
+              valor_negociado: candidaturaDto.valor_negociado,
+              horario_negociado: candidaturaDto.horario_negociado,
+              status: candidaturaDto.status,
+              data_candidatura: new Date(), // Se necessário atualizar
+            },
+          });
+        } else {
+          // Caso não exista, cria uma nova candidatura
+          await this.prisma.candidatura.create({
+            data: {
+              valor_negociado: candidaturaDto.valor_negociado,
+              horario_negociado: candidaturaDto.horario_negociado,
+              status: candidaturaDto.status,
+              data_candidatura: new Date(),
+              Card: {
+                connect: { id_pedido: id_pedido },
+              },
+              Prestador: {
+                connect: { id_prestador: candidaturaDto.prestador_id },
+              },
+            },
+          });
+        }
+      }
+    }
 
-    //         // connect: { id: candidaturaDto.prestador_id }, // Ensure `prestador_id` is provided in `candidaturaDto`
-    //         // },
-    //       },
-
-    //     });
-    //   }
-    // }
-
+    // Retorna o card atualizado, incluindo as candidaturas
     return this.prisma.card.findUnique({
       where: { id_pedido },
       include: { Candidatura: true },
