@@ -77,9 +77,10 @@ model Card {
   subcategoria         String
   valor                String
   horario_preferencial String
-  valor_negociado      String?
-  horario_negociado    String?
-  status               Boolean?
+
+  valor_negociado_cliente      String?
+  horario_negociado_cliente    String?
+
   codigo_confirmacao   String?
   data_finalizacao     String?
   status_pedido        String

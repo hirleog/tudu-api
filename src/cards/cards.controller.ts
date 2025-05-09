@@ -56,6 +56,7 @@ export class CardsController {
       }
 
       prestadorInfo = {
+        id_prestador: req.user.sub,
         cpf: prestador.cpf,
         email: prestador.email,
         telefone: prestador.telefone,

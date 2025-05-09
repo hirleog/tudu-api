@@ -58,6 +58,14 @@ export class UpdateCardDto {
 
   @IsOptional()
   @IsString()
+  valor_negociado_cliente?: string;
+
+  @IsOptional()
+  @IsString()
+  horario_negociado_cliente?: string;
+
+  @IsOptional()
+  @IsString()
   codigo_confirmacao?: string;
 
   @IsOptional()

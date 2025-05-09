@@ -57,9 +57,10 @@ export class CardsService {
 
   async findAll(
     prestadorInfo: {
-      telefone?: string;
+      id_prestador?: string;
       cpf?: string;
       email?: string;
+      telefone?: string;
       id_cliente?: number;
     } | null,
     clienteInfo: { id_cliente?: number } | null,
@@ -98,37 +99,50 @@ export class CardsService {
       },
     });
 
-    return cards.map((card) => ({
-      id_pedido: card.id_pedido,
-      id_cliente: card.id_cliente.toString(),
-      id_prestador: card.id_prestador || null,
-      status_pedido: card.status_pedido,
-
-      categoria: card.categoria,
-      subcategoria: card.subcategoria,
-      valor: card.valor,
-      horario_preferencial: card.horario_preferencial,
-      codigo_confirmacao: card.codigo_confirmacao || null,
-
-      address: {
-        cep: card.cep,
-        street: card.street,
-        neighborhood: card.neighborhood,
-        city: card.city,
-        state: card.state,
-        number: card.number,
-        complement: card.complement || null,
-      },
-
-      candidaturas: card.Candidatura.map((candidatura) => ({
+    return cards.map((card) => {
+      const todasCandidaturas = card.Candidatura.map((candidatura) => ({
         id_candidatura: candidatura.id_candidatura || null,
         prestador_id: candidatura.prestador_id || null,
         valor_negociado: candidatura.valor_negociado || null,
         horario_negociado: candidatura.horario_negociado || null,
         data_candidatura: candidatura.data_candidatura || null,
         status: candidatura.status || false,
-      })),
-    }));
+      }));
+
+      // Se o acesso for de cliente, retorna todas
+      // Se o acesso for de prestador, retorna apenas a dele
+      const candidaturasFiltradas =
+        id_cliente !== undefined
+          ? todasCandidaturas
+          : todasCandidaturas.filter(
+              (c) => c.prestador_id === Number(prestadorInfo?.id_prestador),
+            );
+
+      return {
+        id_pedido: card.id_pedido,
+        id_cliente: card.id_cliente.toString(),
+        id_prestador: card.id_prestador || null,
+        status_pedido: card.status_pedido,
+
+        categoria: card.categoria,
+        subcategoria: card.subcategoria,
+        valor: card.valor,
+        horario_preferencial: card.horario_preferencial,
+        codigo_confirmacao: card.codigo_confirmacao || null,
+
+        address: {
+          cep: card.cep,
+          street: card.street,
+          neighborhood: card.neighborhood,
+          city: card.city,
+          state: card.state,
+          number: card.number,
+          complement: card.complement || null,
+        },
+
+        candidaturas: candidaturasFiltradas,
+      };
+    });
   }
 
   async findById(id_pedido: string): Promise<card> {
