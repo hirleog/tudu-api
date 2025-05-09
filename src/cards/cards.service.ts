@@ -63,44 +63,41 @@ export class CardsService {
       id_cliente?: number;
     } | null,
     clienteInfo: { id_cliente?: number } | null,
+    status_pedido?: string, // novo parâmetro
   ): Promise<card[]> {
     const { telefone, cpf, email } = prestadorInfo || {};
     const { id_cliente } = clienteInfo || {};
 
-    console.log('Prestador Info:', prestadorInfo); // Log para verificar o prestadorInfo
-    console.log('Cliente Info:', clienteInfo); // Log para verificar o clienteInfo
-
     const filters = [];
 
-    // Adiciona condições apenas para os campos que não são nulos ou indefinidos
-    if (telefone) {
-      filters.push({ telefone: telefone });
-    }
-    if (cpf) {
-      filters.push({ cpf: cpf });
-    }
-    if (email) {
-      filters.push({ email: email });
+    if (telefone) filters.push({ telefone });
+    if (cpf) filters.push({ cpf });
+    if (email) filters.push({ email });
+
+    const whereClause: any = id_cliente
+      ? {
+          id_cliente,
+        }
+      : {
+          NOT: {
+            Cliente: {
+              OR: filters,
+            },
+          },
+        };
+
+    // Se o status_pedido for informado, adiciona na cláusula where
+    if (status_pedido) {
+      whereClause.status_pedido = status_pedido;
     }
 
     const cards = await this.prisma.card.findMany({
-      where: id_cliente
-        ? {
-            id_cliente: id_cliente, // Mostra apenas os cards do cliente logado
-          }
-        : {
-            NOT: {
-              Cliente: {
-                OR: filters, // Aplica as condições dinamicamente para prestadores
-              },
-            },
-          },
+      where: whereClause,
       include: {
-        Candidatura: true, // Inclui as informações da tabela Candidatura
+        Candidatura: true,
       },
     });
 
-    // Transformar os dados para incluir o endereço como um objeto
     return cards.map((card) => ({
       id_pedido: card.id_pedido,
       id_cliente: card.id_cliente.toString(),
@@ -113,12 +110,6 @@ export class CardsService {
       horario_preferencial: card.horario_preferencial,
       codigo_confirmacao: card.codigo_confirmacao || null,
 
-      // valor_negociado: card.valor_negociado || null,
-      // horario_negociado: card.horario_negociado || null,
-      // data_candidatura: card.data_candidatura || null,
-      // status: card.status || false,
-      // data_finalizacao: card.data_finalizacao || null,
-
       address: {
         cep: card.cep,
         street: card.street,
@@ -130,11 +121,11 @@ export class CardsService {
       },
 
       candidaturas: card.Candidatura.map((candidatura) => ({
-        id_candidatura: candidatura.id_candidatura || '',
-        // prestador_id: candidatura.prestador_id,
-        valor_negociado: candidatura.valor_negociado || '',
+        id_candidatura: candidatura.id_candidatura || null,
+        prestador_id: candidatura.prestador_id || null,
+        valor_negociado: candidatura.valor_negociado || null,
         horario_negociado: candidatura.horario_negociado || null,
-        data_candidatura: candidatura.data_candidatura,
+        data_candidatura: candidatura.data_candidatura || null,
         status: candidatura.status || false,
       })),
     }));

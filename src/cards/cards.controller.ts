@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -33,16 +34,14 @@ export class CardsController {
 
   @UseGuards(MultiRoleAuthGuard)
   @Get()
-  async findAll(@Req() req: any) {
+  async findAll(
+    @Req() req: any,
+    @Query('status_pedido') status_pedido: string,
+  ) {
     let prestadorInfo = null;
     let clienteInfo = null;
 
-    // Verifica se o usuário é um prestador
     if (req.user.role === 'prestador') {
-      // Busca as informações do prestador na tabela
-      // console.log('User Role prestador:', req.user?.role); // Verifique o role aqui também
-      console.log('ID Prestador (req.user.sub):', req.user.sub);
-
       const prestador = await this.prisma.prestador.findUnique({
         where: { id_prestador: req.user.sub },
         select: {
@@ -62,19 +61,15 @@ export class CardsController {
         telefone: prestador.telefone,
       };
     } else {
-      // Verifica se o usuário é um prestador
-      // Busca as informações do prestador na tabela
       const cliente = await this.prisma.cliente.findUnique({
         where: { id_cliente: req.user.sub },
         select: {
-          id_cliente: true, // Inclui o id_cliente
+          id_cliente: true,
           cpf: true,
           email: true,
           telefone: true,
         },
       });
-
-      console.log('User Role cliente:', req.user?.role); // Verifique o role aqui também
 
       if (!cliente) {
         throw new Error('cliente não encontrado.');
@@ -83,7 +78,8 @@ export class CardsController {
       clienteInfo = cliente;
     }
 
-    return this.cardsService.findAll(prestadorInfo, clienteInfo);
+    // Aqui você passa o status para o service
+    return this.cardsService.findAll(prestadorInfo, clienteInfo, status_pedido);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -98,7 +94,6 @@ export class CardsController {
     @Body() updatedCard: UpdateCardDto,
     @Req() req: any, // Injetando o contexto da requisição
   ) {
-
     console.log('Existing Card:', updatedCard); // Log para verificar o card existente
 
     // const id_prestador = req.user?.id_prestador;
