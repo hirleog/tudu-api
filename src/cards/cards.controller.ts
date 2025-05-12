@@ -83,10 +83,54 @@ export class CardsController {
     return this.cardsService.findAll(prestadorInfo, clienteInfo, status_pedido);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(MultiRoleAuthGuard)
   @Get(':id_pedido')
-  async findById(@Param('id_pedido') id_pedido: string) {
-    return this.cardsService.findById(id_pedido);
+  async findById(@Req() req: any, @Param('id_pedido') id_pedido: string) {
+    let prestadorInfo = null;
+    let clienteInfo = null;
+
+    if (req.user.role === 'prestador') {
+      const prestador = await this.prisma.prestador.findUnique({
+        where: { id_prestador: req.user.sub },
+        select: {
+          cpf: true,
+          email: true,
+          telefone: true,
+        },
+      });
+
+      if (!prestador) {
+        throw new Error('Prestador não encontrado.');
+      }
+
+      prestadorInfo = {
+        id_prestador: req.user.sub,
+      };
+    } else {
+      const cliente = await this.prisma.cliente.findUnique({
+        where: { id_cliente: req.user.sub },
+        select: {
+          id_cliente: true,
+          cpf: true,
+          email: true,
+          telefone: true,
+        },
+      });
+
+      if (!cliente) {
+        throw new Error('Cliente não encontrado.');
+      }
+
+      clienteInfo = {
+        id_cliente: cliente.id_cliente,
+      };
+    }
+
+    return this.cardsService.findById(
+      id_pedido,
+      prestadorInfo,
+      clienteInfo,
+    );
   }
 
   @Put(':id_pedido')

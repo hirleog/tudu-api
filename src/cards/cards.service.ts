@@ -145,35 +145,58 @@ export class CardsService {
     });
   }
 
-  async findById(id_pedido: string): Promise<card> {
+  async findById(
+    id_pedido: string,
+    prestadorInfo: {
+      id_prestador?: string;
+    } | null,
+    clienteInfo: {
+      id_cliente?: number;
+    } | null,
+  ): Promise<any> {
+    const { id_prestador } = prestadorInfo || {};
+    const { id_cliente } = clienteInfo || {};
+
     const card = await this.prisma.card.findUnique({
       where: {
-        id_pedido, // Filtra pelo id_pedido
+        id_pedido,
+      },
+      include: {
+        Candidatura: true,
       },
     });
 
     if (!card) {
-      throw new NotFoundException(`Card with ID ${id_pedido} not found`);
+      throw new Error('Pedido não encontrado');
     }
 
-    // Transformar os dados para incluir o endereço como um objeto
+    const todasCandidaturas = card.Candidatura.map((candidatura) => ({
+      id_candidatura: candidatura.id_candidatura || null,
+      prestador_id: candidatura.prestador_id || null,
+      valor_negociado: candidatura.valor_negociado || null,
+      horario_negociado: candidatura.horario_negociado || null,
+      data_candidatura: candidatura.data_candidatura || null,
+      status: candidatura.status || false,
+    }));
+
+    const candidaturasFiltradas =
+      id_cliente !== undefined
+        ? todasCandidaturas
+        : todasCandidaturas.filter(
+            (c: any) => c.prestador_id === Number(id_prestador),
+          );
+
     return {
       id_pedido: card.id_pedido,
       id_cliente: card.id_cliente.toString(),
-      id_prestador: card.id_prestador?.toString() || null,
+      id_prestador: card.id_prestador || null,
       status_pedido: card.status_pedido,
-
-      // valor_negociado: card.valor_negociado || null,
-      // horario_negociado: card.horario_negociado || null,
-      // data_candidatura: card.data_candidatura || null,
-      // status: card.status || false,
-      // codigo_confirmacao: card.codigo_confirmacao || null,
-      // data_finalizacao: card.data_finalizacao || null,
 
       categoria: card.categoria,
       subcategoria: card.subcategoria,
       valor: card.valor,
       horario_preferencial: card.horario_preferencial,
+      codigo_confirmacao: card.codigo_confirmacao || null,
 
       address: {
         cep: card.cep,
@@ -184,6 +207,8 @@ export class CardsService {
         number: card.number,
         complement: card.complement || null,
       },
+
+      candidaturas: candidaturasFiltradas,
     };
   }
 
