@@ -64,21 +64,21 @@ export class CardsService {
       id_cliente?: number;
     } | null,
     clienteInfo: { id_cliente?: number } | null,
-    status_pedido?: string, // novo parâmetro
-  ): Promise<card[]> {
-    const { telefone, cpf, email } = prestadorInfo || {};
+    status_pedido?: string,
+  ): Promise<{
+    cards: any[];
+    counts: { publicado: number; andamento: number; finalizado: number };
+  }> {
+    const { telefone, cpf, email, id_prestador } = prestadorInfo || {};
     const { id_cliente } = clienteInfo || {};
 
     const filters = [];
-
     if (telefone) filters.push({ telefone });
     if (cpf) filters.push({ cpf });
     if (email) filters.push({ email });
 
     const whereClause: any = id_cliente
-      ? {
-          id_cliente,
-        }
+      ? { id_cliente }
       : {
           NOT: {
             Cliente: {
@@ -87,8 +87,11 @@ export class CardsService {
           },
         };
 
-    // Se o status_pedido for informado, adiciona na cláusula where
-    if (status_pedido) {
+    if (
+      status_pedido === 'finalizado' ||
+      status_pedido === 'publicado' ||
+      status_pedido === 'pendente'
+    ) {
       whereClause.status_pedido = status_pedido;
     }
 
@@ -97,26 +100,113 @@ export class CardsService {
       include: {
         Candidatura: true,
       },
+      orderBy: {
+        createdAt: 'desc',
+      },
     });
 
-    return cards.map((card) => {
-      const todasCandidaturas = card.Candidatura.map((candidatura) => ({
-        id_candidatura: candidatura.id_candidatura || null,
-        prestador_id: candidatura.prestador_id || null,
-        valor_negociado: candidatura.valor_negociado || null,
-        horario_negociado: candidatura.horario_negociado || null,
-        data_candidatura: candidatura.data_candidatura || null,
-        status: candidatura.status || false,
+    const prestadorId = Number(id_prestador);
+
+    const counts = {
+      publicado: cards.filter(
+        (card) =>
+          card.status_pedido === 'publicado' &&
+          !card.Candidatura.some((c) => c.prestador_id === prestadorId),
+      ).length,
+
+      andamento: cards.filter((card) => {
+        const emNegociacao = card.Candidatura.some(
+          (c) => c.status === 'negociacao' && c.prestador_id === prestadorId,
+        );
+
+        const publicadoComCandidatura =
+          card.status_pedido === 'publicado' &&
+          card.Candidatura.some((c) => c.prestador_id === prestadorId);
+
+        return emNegociacao || publicadoComCandidatura;
+      }).length,
+
+      finalizado: cards.filter(
+        (card) =>
+          card.status_pedido === 'finalizado' &&
+          card.Candidatura.some(
+            (c) => !id_cliente && c.prestador_id === prestadorId,
+          ),
+      ).length,
+    };
+
+    const cardsFiltrados = cards.filter((card) => {
+      if (status_pedido === 'publicado') {
+        return (
+          card.status_pedido === 'publicado' &&
+          !card.Candidatura.some((c) => c.prestador_id === prestadorId)
+        );
+      }
+
+      if (status_pedido === 'andamento') {
+        const emNegociacao = card.Candidatura.some(
+          (c) => c.status === 'negociacao' && c.prestador_id === prestadorId,
+        );
+
+        const publicadoComCandidatura =
+          card.status_pedido === 'publicado' &&
+          card.Candidatura.some((c) => c.prestador_id === prestadorId);
+
+        return emNegociacao || publicadoComCandidatura;
+      }
+
+      if (status_pedido === 'finalizado') {
+        return (
+          card.status_pedido === 'finalizado' &&
+          card.Candidatura.some(
+            (c) => !id_cliente && c.prestador_id === prestadorId,
+          )
+        );
+      }
+
+      if (status_pedido === 'pendente') {
+        return card.status_pedido === 'pendente';
+      }
+
+      return true;
+    });
+
+    // ✅ Ordenação dinâmica conforme solicitado
+    cardsFiltrados.sort((a, b) => {
+      const isAAndamento = a.status_pedido === 'andamento';
+      const isBAndamento = b.status_pedido === 'andamento';
+
+      if (isAAndamento && isBAndamento) {
+        return (
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        );
+      }
+
+      if (isAAndamento && !isBAndamento) {
+        return -1;
+      }
+
+      if (!isAAndamento && isBAndamento) {
+        return 1;
+      }
+
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    const cardsFormatados = cardsFiltrados.map((card) => {
+      const todasCandidaturas = card.Candidatura.map((c) => ({
+        id_candidatura: c.id_candidatura || null,
+        prestador_id: c.prestador_id || null,
+        valor_negociado: c.valor_negociado || null,
+        horario_negociado: c.horario_negociado || null,
+        data_candidatura: c.data_candidatura || null,
+        status: c.status || false,
       }));
 
-      // Se o acesso for de cliente, retorna todas
-      // Se o acesso for de prestador, retorna apenas a dele
       const candidaturasFiltradas =
         id_cliente !== undefined
           ? todasCandidaturas
-          : todasCandidaturas.filter(
-              (c) => c.prestador_id === Number(prestadorInfo?.id_prestador),
-            );
+          : todasCandidaturas.filter((c) => c.prestador_id === prestadorId);
 
       return {
         id_pedido: card.id_pedido,
@@ -143,6 +233,11 @@ export class CardsService {
         candidaturas: candidaturasFiltradas,
       };
     });
+
+    return {
+      cards: cardsFormatados,
+      counts,
+    };
   }
 
   async findById(
@@ -181,8 +276,9 @@ export class CardsService {
 
     const candidaturasFiltradas =
       id_cliente !== undefined
-        ? todasCandidaturas
+        ? todasCandidaturas.filter((c: any) => c.status !== 'recusado') // cliente não vê recusadas
         : todasCandidaturas.filter(
+            // prestador vê apenas sua candidatura, inclusive se for recusada
             (c: any) => c.prestador_id === Number(id_prestador),
           );
 
