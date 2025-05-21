@@ -3,6 +3,7 @@ import { CreatePrestadorDto } from '../dto/create-prestador.dto';
 import { Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
+import { UpdatePrestadorDto } from '../dto/update-prestador.dto';
 
 @Injectable()
 export class PrestadorService {
@@ -62,7 +63,16 @@ export class PrestadorService {
     return payload;
   }
 
-  async findAllPrestadores() {
-    return this.prisma.prestador.findMany();
+  async getById(id: number) {
+    return this.prisma.prestador.findUnique({
+      where: { id_prestador: id },
+    });
+  }
+
+  async update(id: number, dto: UpdatePrestadorDto) {
+    return this.prisma.prestador.update({
+      where: { id_prestador: id },
+      data: dto,
+    });
   }
 }

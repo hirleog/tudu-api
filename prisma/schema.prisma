@@ -23,6 +23,7 @@ model Cliente {
   endereco_bairro String?
   endereco_rua    String?
   endereco_numero String?
+  foto            String? // novo campo
   created_at      DateTime @default(now())
   updated_at      DateTime @default(now()) @updatedAt
 
@@ -30,24 +31,26 @@ model Cliente {
 }
 
 model Prestador {
-  id_prestador    Int      @id @default(autoincrement())
-  telefone        String?
-  nome            String
-  sobrenome       String
-  cpf             String?  @unique
-  data_nascimento String?
-  email           String   @unique
-  password        String
-  endereco_estado String?
-  endereco_cidade String?
-  endereco_bairro String?
-  endereco_rua    String?
-  endereco_numero String?
-  especializacao  String?
-  descricao       String?
-  avaliacao       String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @default(now()) @updatedAt
+  id_prestador           Int      @id @default(autoincrement())
+  telefone               String?
+  nome                   String
+  sobrenome              String
+  cpf                    String?  @unique
+  data_nascimento        String?
+  email                  String   @unique
+  password               String
+  endereco_estado        String?
+  endereco_cidade        String?
+  endereco_bairro        String?
+  endereco_rua           String?
+  endereco_numero        String?
+  especializacao         String?
+  descricao              String?
+  avaliacao              String?
+  foto                   String?  @db.LongText
+  numero_servicos_feitos Int? // novo campo
+  created_at             DateTime @default(now())
+  updated_at             DateTime @default(now()) @updatedAt
 
   Candidatura Candidatura[]
   Card        Card[]
@@ -78,12 +81,12 @@ model Card {
   valor                String
   horario_preferencial String
 
-  valor_negociado_cliente      String?
-  horario_negociado_cliente    String?
+  valor_negociado_cliente   String?
+  horario_negociado_cliente String?
 
-  codigo_confirmacao   String?
-  data_finalizacao     String?
-  status_pedido        String
+  codigo_confirmacao String?
+  data_finalizacao   String?
+  status_pedido      String
 
   // Campos de endereço
   cep          String

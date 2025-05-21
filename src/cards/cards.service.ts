@@ -87,15 +87,9 @@ export class CardsService {
           },
         };
 
-    if (
-      status_pedido === 'finalizado' ||
-      status_pedido === 'publicado' ||
-      status_pedido === 'pendente'
-    ) {
-      whereClause.status_pedido = status_pedido;
-    }
+    const prestadorId = Number(id_prestador);
 
-    const cards = await this.prisma.card.findMany({
+    const allCards = await this.prisma.card.findMany({
       where: whereClause,
       include: {
         Candidatura: true,
@@ -105,16 +99,15 @@ export class CardsService {
       },
     });
 
-    const prestadorId = Number(id_prestador);
-
+    // ✅ Aqui o count sempre considera todos os cards
     const counts = {
-      publicado: cards.filter(
+      publicado: allCards.filter(
         (card) =>
           card.status_pedido === 'publicado' &&
           !card.Candidatura.some((c) => c.prestador_id === prestadorId),
       ).length,
 
-      andamento: cards.filter((card) => {
+      andamento: allCards.filter((card) => {
         const emNegociacao = card.Candidatura.some(
           (c) => c.status === 'negociacao' && c.prestador_id === prestadorId,
         );
@@ -126,16 +119,15 @@ export class CardsService {
         return emNegociacao || publicadoComCandidatura;
       }).length,
 
-      finalizado: cards.filter(
+      finalizado: allCards.filter(
         (card) =>
           card.status_pedido === 'finalizado' &&
-          card.Candidatura.some(
-            (c) => !id_cliente && c.prestador_id === prestadorId,
-          ),
+          card.Candidatura.some((c) => c.prestador_id === prestadorId),
       ).length,
     };
 
-    const cardsFiltrados = cards.filter((card) => {
+    // 🎯 Aplica filtro de exibição por status apenas aqui
+    const cardsFiltrados = allCards.filter((card) => {
       if (status_pedido === 'publicado') {
         return (
           card.status_pedido === 'publicado' &&
@@ -158,9 +150,7 @@ export class CardsService {
       if (status_pedido === 'finalizado') {
         return (
           card.status_pedido === 'finalizado' &&
-          card.Candidatura.some(
-            (c) => !id_cliente && c.prestador_id === prestadorId,
-          )
+          card.Candidatura.some((c) => c.prestador_id === prestadorId)
         );
       }
 
@@ -171,7 +161,6 @@ export class CardsService {
       return true;
     });
 
-    // ✅ Ordenação dinâmica conforme solicitado
     cardsFiltrados.sort((a, b) => {
       const isAAndamento = a.status_pedido === 'andamento';
       const isBAndamento = b.status_pedido === 'andamento';
