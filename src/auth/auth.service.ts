@@ -72,4 +72,18 @@ export class AuthService {
       access_token: accessToken,
     };
   }
+  // async loginPrestador(prestador: any) {
+  //   const payload = {
+  //     sub: prestador.id_prestador,
+  //     role: 'prestador',
+  //   };
+  //   const accessToken = this.jwtService.sign(payload, {
+  //     secret: process.env.JWT_SECRET_PRESTADOR,
+  //   });
+
+  //   return {
+  //     role: 'prestador',
+  //     access_token: accessToken,
+  //   };
+  // }
 }
