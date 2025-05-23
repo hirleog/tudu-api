@@ -31,5 +31,5 @@ export class PrestadorController {
     @Body() updatePrestadorDto: UpdatePrestadorDto,
   ) {
     return this.prestadorService.update(id, updatePrestadorDto);
-  }
+  } 
 }

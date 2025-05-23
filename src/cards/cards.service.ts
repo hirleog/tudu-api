@@ -3,7 +3,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateCardDto } from './dto/create-card.dto';
 import { card } from './entities/card.entity';
 import { UpdateCardDto } from './dto/update-card.dto';
-
+import { customAlphabet } from 'nanoid';
 @Injectable()
 export class CardsService {
   private cards: card[] = []; // Simulação de banco de dados em memória
@@ -11,7 +11,11 @@ export class CardsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createCardDto: CreateCardDto) {
+    const generateNumericId = customAlphabet('0123456789', 8);
+    const id_pedido = generateNumericId(); // exemplo: '492173'
+
     const createInput: any = {
+      id_pedido: id_pedido, // gera algo como "5gD1kqR7vB"
       id_cliente: Number(createCardDto.id_cliente),
       status_pedido: createCardDto.status_pedido,
       categoria: createCardDto.categoria,
@@ -34,26 +38,6 @@ export class CardsService {
       data: createInput,
     });
   }
-
-  // async findAll(prestadorInfo: { telefone?: string } | null): Promise<card[]> {
-  //   const { telefone } = prestadorInfo || {};
-
-  //   console.log('Prestador Info:', prestadorInfo); // Log para verificar o prestadorInfo
-
-  //   const cards = await this.prisma.card.findMany({
-  //     where: prestadorInfo && telefone
-  //       ? {
-  //           Cliente: {
-  //             telefone: {
-  //               not: telefone, // Exclui os cards cujo telefone do cliente seja igual ao do prestador
-  //             },
-  //           },
-  //         }
-  //       : {}, // Se for cliente ou não houver telefone, não aplica filtros
-  //     include: {
-  //       Candidatura: true, // Inclui as informações da tabela Candidatura
-  //     },
-  //   });
 
   async findAll(
     prestadorInfo: {
@@ -200,7 +184,10 @@ export class CardsService {
       return {
         id_pedido: card.id_pedido,
         id_cliente: card.id_cliente.toString(),
-        id_prestador: card.id_prestador || null,
+        id_prestador:
+          status_pedido === 'pendente'
+            ? candidaturasFiltradas[0].prestador_id
+            : null,
         status_pedido: card.status_pedido,
 
         categoria: card.categoria,

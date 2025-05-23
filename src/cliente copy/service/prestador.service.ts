@@ -1,8 +1,7 @@
-import { PrismaService } from 'src/prisma/prisma.service';
-import { CreatePrestadorDto } from '../dto/create-prestador.dto';
 import { Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { v4 as uuidv4 } from 'uuid';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { CreatePrestadorDto } from '../dto/create-prestador.dto';
 import { UpdatePrestadorDto } from '../dto/update-prestador.dto';
 
 @Injectable()

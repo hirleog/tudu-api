@@ -72,7 +72,7 @@ model Candidatura {
 }
 
 model Card {
-  id_pedido    String @id @default(uuid())
+  id_pedido    String @id
   id_cliente   Int
   id_prestador Int? // Pode ser nulo inicialmente
 
