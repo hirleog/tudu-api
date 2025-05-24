@@ -186,11 +186,13 @@ export class CardsService {
           ? todasCandidaturas
           : todasCandidaturas.filter((c) => c.prestador_id === prestadorId);
 
+      console.log(candidaturasFiltradas);
+
       return {
         id_pedido: card.id_pedido,
         id_cliente: card.id_cliente.toString(),
         id_prestador:
-          status_pedido === 'pendente'
+          status_pedido === 'pendente' && candidaturasFiltradas.length > 0
             ? candidaturasFiltradas[0].prestador_id
             : null,
         status_pedido: card.status_pedido,
