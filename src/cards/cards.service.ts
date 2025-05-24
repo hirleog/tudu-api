@@ -103,11 +103,13 @@ export class CardsService {
         return emNegociacao || publicadoComCandidatura;
       }).length,
 
-      finalizado: allCards.filter(
-        (card) =>
-          card.status_pedido === 'finalizado' &&
-          card.Candidatura.some((c) => c.prestador_id === prestadorId),
-      ).length,
+      finalizado: allCards.filter((card) => {
+        if (card.status_pedido !== 'finalizado') return false;
+
+        if (id_cliente && card.id_cliente === id_cliente) return true;
+
+        return card.Candidatura.some((c) => c.prestador_id === prestadorId);
+      }).length,
     };
 
     // 🎯 Aplica filtro de exibição por status apenas aqui
@@ -134,7 +136,10 @@ export class CardsService {
       if (status_pedido === 'finalizado') {
         return (
           card.status_pedido === 'finalizado' &&
-          card.Candidatura.some((c) => c.prestador_id === prestadorId)
+          // Cliente: deve ver seus próprios cards finalizados
+          ((id_cliente && card.id_cliente === id_cliente) ||
+            // Prestador: deve ver os que ele participou
+            card.Candidatura.some((c) => c.prestador_id === prestadorId))
         );
       }
 
