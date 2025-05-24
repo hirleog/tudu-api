@@ -73,4 +73,12 @@ export class CreatePrestadorDto {
   @IsOptional()
   @IsString()
   avaliacao?: string;
+
+  @IsOptional()
+  @IsString()
+  foto?: string;
+
+  @IsOptional()
+  @IsNumber()
+  numero_servicos_feitos?: number;
 }
