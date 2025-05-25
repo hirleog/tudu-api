@@ -7,6 +7,7 @@ import { ClienteModule } from './cliente/cliente.module';
 import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
 import { PrestadorModule } from './cliente copy/prestador.module';
+import { EventsGateway } from './events/events.gateway';
 
 @Module({
   imports: [
@@ -21,6 +22,6 @@ import { PrestadorModule } from './cliente copy/prestador.module';
     }),
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, EventsGateway],
 })
 export class AppModule {}
