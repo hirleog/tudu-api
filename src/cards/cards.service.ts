@@ -4,11 +4,15 @@ import { CreateCardDto } from './dto/create-card.dto';
 import { card } from './entities/card.entity';
 import { UpdateCardDto } from './dto/update-card.dto';
 import { customAlphabet } from 'nanoid';
+import { EventsGateway } from 'src/events/events.gateway';
 @Injectable()
 export class CardsService {
   private cards: card[] = []; // Simulação de banco de dados em memória
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventsGateway: EventsGateway,
+  ) {}
 
   async create(createCardDto: CreateCardDto) {
     const generateNumericId = customAlphabet('0123456789', 8);
@@ -292,17 +296,15 @@ export class CardsService {
   }
 
   async update(id_pedido: string, updateCardDto: UpdateCardDto) {
-    // Verifica se o card existe
     const existingCard = await this.prisma.card.findUnique({
       where: { id_pedido },
-      include: { Candidatura: true }, // Inclui as candidaturas existentes
+      include: { Candidatura: true },
     });
 
     if (!existingCard) {
       throw new NotFoundException(`Card with ID ${id_pedido} not found`);
     }
 
-    // Atualiza o status do card
     const updatedCard = await this.prisma.card.update({
       where: { id_pedido },
       data: {
@@ -327,12 +329,25 @@ export class CardsService {
       include: { Candidatura: true },
     });
 
-    // Atualiza ou cria novas candidaturas
+    await this.eventsGateway.notificarAtualizacao(updatedCard);
+
+
+    // ✅ Se o status mudou para "finalizado", emita evento via WebSocket
+    if (
+      updateCardDto.status_pedido &&
+      updateCardDto.status_pedido === 'finalizado'
+    ) {
+      this.eventsGateway.notifyClientStatusChange(
+        updatedCard.id_pedido,
+        updatedCard.status_pedido,
+      );
+    }
+
+    // Atualiza ou cria candidaturas, como já fazia antes
     if (updateCardDto.candidaturas) {
       const candidaturaDtos = updateCardDto.candidaturas;
 
       for (const candidaturaDto of candidaturaDtos) {
-        // Verifica se a candidatura já existe
         const existingCandidatura = await this.prisma.candidatura.findUnique({
           where: {
             id_pedido_prestador_id: {
@@ -343,18 +358,16 @@ export class CardsService {
         });
 
         if (existingCandidatura) {
-          // Atualiza a candidatura existente
           await this.prisma.candidatura.update({
             where: { id_candidatura: existingCandidatura.id_candidatura },
             data: {
               valor_negociado: candidaturaDto.valor_negociado,
               horario_negociado: candidaturaDto.horario_negociado,
               status: candidaturaDto.status,
-              data_candidatura: new Date(), // Se necessário atualizar
+              data_candidatura: new Date(),
             },
           });
         } else {
-          // Caso não exista, cria uma nova candidatura
           await this.prisma.candidatura.create({
             data: {
               valor_negociado: candidaturaDto.valor_negociado,
@@ -373,7 +386,6 @@ export class CardsService {
       }
     }
 
-    // Retorna o card atualizado, incluindo as candidaturas
     return this.prisma.card.findUnique({
       where: { id_pedido },
       include: { Candidatura: true },
