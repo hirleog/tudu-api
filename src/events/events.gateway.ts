@@ -15,9 +15,10 @@ const corsOrigins = isDev
 
 @WebSocketGateway({
   cors: {
-    origin: corsOrigins,
+    origin: ['https://use-tudu.com.br', 'https://professional.use-tudu.com.br'],
     credentials: true,
   },
+  transports: ['websocket'],
 })
 export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
