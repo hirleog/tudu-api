@@ -331,8 +331,6 @@ export class CardsService {
 
     await this.eventsGateway.notificarAtualizacao(updatedCard);
 
-
-    // ✅ Se o status mudou para "finalizado", emita evento via WebSocket
     if (
       updateCardDto.status_pedido &&
       updateCardDto.status_pedido === 'finalizado'
@@ -343,7 +341,9 @@ export class CardsService {
       );
     }
 
-    // Atualiza ou cria candidaturas, como já fazia antes
+    // Novo controle: flag para saber se houve nova candidatura
+    let houveNovaCandidatura = false;
+
     if (updateCardDto.candidaturas) {
       const candidaturaDtos = updateCardDto.candidaturas;
 
@@ -382,7 +382,14 @@ export class CardsService {
               },
             },
           });
+
+          // Marca que houve ao menos uma nova candidatura
+          houveNovaCandidatura = true;
         }
+      }
+      // ✅ Emite evento apenas uma vez se ao menos uma nova candidatura foi criada
+      if (houveNovaCandidatura) {
+        this.eventsGateway.emitirAlertaNovaCandidatura(id_pedido);
       }
     }
 
