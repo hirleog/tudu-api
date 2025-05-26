@@ -52,10 +52,13 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     prestador_id: string;
   }) {
     this.server.to(payload.id_pedido).emit('nova-candidatura', payload);
+    console.log('chamou notificarNovaCandidatura', payload);
+    
   }
-
-   // Emite para todos os clientes o alerta de nova candidatura para um pedido específico
+  
+  // Emite para todos os clientes o alerta de nova candidatura para um pedido específico
   emitirAlertaNovaCandidatura(id_pedido: string) {
     this.server.emit(`alerta-nova-candidatura`, { id_pedido });
+    console.log('chamou emitirAlertaNovaCandidaturaa', id_pedido);
   }
 }

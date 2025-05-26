@@ -187,10 +187,8 @@ export class CardsService {
 
       const candidaturasFiltradas =
         id_cliente !== undefined
-          ? todasCandidaturas
+          ? todasCandidaturas.filter((c) => c.status !== 'recusado') // 👈 aqui o filtro extra
           : todasCandidaturas.filter((c) => c.prestador_id === prestadorId);
-
-      console.log(candidaturasFiltradas);
 
       return {
         id_pedido: card.id_pedido,
@@ -390,6 +388,9 @@ export class CardsService {
       // ✅ Emite evento apenas uma vez se ao menos uma nova candidatura foi criada
       if (houveNovaCandidatura) {
         this.eventsGateway.emitirAlertaNovaCandidatura(id_pedido);
+        console.log('houveNovaCandidatura', houveNovaCandidatura);
+      } else {
+        console.log('Nenhuma nova candidatura foi criada');
       }
     }
 
