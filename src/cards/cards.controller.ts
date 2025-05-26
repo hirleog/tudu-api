@@ -126,11 +126,7 @@ export class CardsController {
       };
     }
 
-    return this.cardsService.findById(
-      id_pedido,
-      prestadorInfo,
-      clienteInfo,
-    );
+    return this.cardsService.findById(id_pedido, prestadorInfo, clienteInfo);
   }
 
   @Put(':id_pedido')
@@ -139,16 +135,6 @@ export class CardsController {
     @Body() updatedCard: UpdateCardDto,
     @Req() req: any, // Injetando o contexto da requisição
   ) {
-    console.log('Existing Card:', updatedCard); // Log para verificar o card existente
-
-    // const id_prestador = req.user?.id_prestador;
-    // // Adicionando um log para verificar o valor de id_prestador
-    // console.log('ID Prestador extraído do token JWT:', id_prestador);
-
-    // if (!id_prestador) {
-    //   throw new Error('id_prestador não encontrado no token JWT');
-    // }
-
     return this.cardsService.update(id_pedido, updatedCard); // Atualiza um card
   }
 
