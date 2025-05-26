@@ -7,9 +7,16 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
+const isDev = process.env.NODE_ENV !== 'production';
+
+const corsOrigins = isDev
+  ? ['http://localhost:4200', 'http://localhost:3000', 'http://localhost:3001']
+  : ['https://use-tudu.com.br', 'https://professional.use-tudu.com.br'];
+
 @WebSocketGateway({
   cors: {
-    origin: '*', // configure corretamente em produção
+    origin: corsOrigins,
+    credentials: true,
   },
 })
 export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
