@@ -21,10 +21,6 @@ export class CandidaturaDto {
 
   @IsOptional()
   status?: string;
-
-  @IsOptional()
-  @IsString()
-  data_finalizacao?: string;
 }
 
 export class UpdateCardDto {
@@ -51,6 +47,10 @@ export class UpdateCardDto {
   @IsOptional()
   @IsString()
   valor?: string;
+
+  @IsOptional()
+  @IsString()
+  data_finalizacao?: string;
 
   @IsOptional()
   @IsString()

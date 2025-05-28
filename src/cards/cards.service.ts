@@ -204,6 +204,7 @@ export class CardsService {
         valor: card.valor,
         horario_preferencial: card.horario_preferencial,
         codigo_confirmacao: card.codigo_confirmacao || null,
+        data_finalizacao: card.data_finalizacao || null,
 
         address: {
           cep: card.cep,
@@ -216,6 +217,8 @@ export class CardsService {
         },
 
         candidaturas: candidaturasFiltradas,
+        createdAt: card.createdAt,
+        updatedAt: card.updatedAt,
       };
     });
 
@@ -278,6 +281,7 @@ export class CardsService {
       valor: card.valor,
       horario_preferencial: card.horario_preferencial,
       codigo_confirmacao: card.codigo_confirmacao || null,
+      data_finalizacao: card.data_finalizacao || null,
 
       address: {
         cep: card.cep,
@@ -288,8 +292,9 @@ export class CardsService {
         number: card.number,
         complement: card.complement || null,
       },
-
       candidaturas: candidaturasFiltradas,
+      createdAt: card.createdAt,
+      updatedAt: card.updatedAt,
     };
   }
 
@@ -316,6 +321,7 @@ export class CardsService {
           existingCard.horario_preferencial,
         codigo_confirmacao:
           updateCardDto.codigo_confirmacao ?? existingCard.codigo_confirmacao,
+        data_finalizacao: updateCardDto.data_finalizacao ?? null, // Não atualiza se não for fornecido
         cep: updateCardDto.cep ?? existingCard.cep,
         street: updateCardDto.street ?? existingCard.street,
         neighborhood: updateCardDto.neighborhood ?? existingCard.neighborhood,
