@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
 import { PrestadorModule } from './cliente copy/prestador.module';
 import { EventsGateway } from './events/events.gateway';
+import { GeolocationModule } from './geolocation/geolocation.module';
 
 @Module({
   imports: [
@@ -20,6 +21,8 @@ import { EventsGateway } from './events/events.gateway';
     ConfigModule.forRoot({
       isGlobal: true, // para estar disponível em toda a aplicação
     }),
+
+    GeolocationModule,
   ],
   controllers: [AppController],
   providers: [AppService, EventsGateway],
