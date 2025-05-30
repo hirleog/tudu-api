@@ -22,22 +22,20 @@ model Cliente {
   endereco_cidade String?
   endereco_bairro String?
   endereco_rua    String?
-  endereco_numero String?
-  foto            String? // novo campo
-  created_at      DateTime @default(now())
+    created_at      DateTime @default(now())
   updated_at      DateTime @default(now()) @updatedAt
-
-  Card Card[]
+  foto            String?
+  Card            Card[]
 }
 
 model Prestador {
-  id_prestador           Int      @id @default(autoincrement())
+  id_prestador           Int           @id @default(autoincrement())
   telefone               String?
   nome                   String
   sobrenome              String
-  cpf                    String?  @unique
+  cpf                    String?       @unique
   data_nascimento        String?
-  email                  String   @unique
+  email                  String        @unique
   password               String
   endereco_estado        String?
   endereco_cidade        String?
@@ -47,73 +45,65 @@ model Prestador {
   especializacao         String?
   descricao              String?
   avaliacao              String?
-  foto                   String?  @db.LongText
-  numero_servicos_feitos Int? // novo campo
-  created_at             DateTime @default(now())
-  updated_at             DateTime @default(now()) @updatedAt
-
-  Candidatura Candidatura[]
-  Card        Card[]
+  created_at             DateTime      @default(now())
+  updated_at             DateTime      @default(now()) @updatedAt
+  foto                   String?       @db.LongText
+  numero_servicos_feitos Int?
+  Candidatura            Candidatura[]
+  Card                   Card[]
 }
 
 model Candidatura {
-  id_candidatura    Int      @id @default(autoincrement())
-  id_pedido         String // Relacionado ao Card
-  prestador_id      Int // Relacionado ao Prestador
+  id_candidatura    Int       @id @default(autoincrement())
+  id_pedido         String
+  prestador_id      Int
   valor_negociado   String?
   horario_negociado String?
   status            String?
-  data_candidatura  DateTime @default(now())
+  data_candidatura  DateTime  @default(now())
+  Card              Card      @relation(fields: [id_pedido], references: [id_pedido])
+  Prestador         Prestador @relation(fields: [prestador_id], references: [id_prestador])
 
-  Card      Card      @relation(fields: [id_pedido], references: [id_pedido])
-  Prestador Prestador @relation(fields: [prestador_id], references: [id_prestador])
-
-  @@unique([id_pedido, prestador_id]) // Chave composta
+  @@unique([id_pedido, prestador_id])
 }
 
 model Card {
-  id_pedido    String @id
-  id_cliente   Int
-  id_prestador Int? // Pode ser nulo inicialmente
-
-  categoria            String
-  subcategoria         String
-  valor                String
-  horario_preferencial String
-
+  id_pedido                 String        @id
+  id_cliente                Int
+  id_prestador              Int?
+  categoria                 String
+  subcategoria              String
+  valor                     String
+  horario_preferencial      String
   valor_negociado_cliente   String?
   horario_negociado_cliente String?
-
-  codigo_confirmacao String?
-  data_finalizacao   String?
-  status_pedido      String
-
-  // Campos de endereço
-  cep          String
-  street       String
-  neighborhood String
-  city         String
-  state        String
-  number       String
-  complement   String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  Cliente     Cliente       @relation(fields: [id_cliente], references: [id_cliente])
-  Prestador   Prestador?    @relation(fields: [id_prestador], references: [id_prestador])
-  Candidatura Candidatura[]
-
-  imagens Imagem[]
+  codigo_confirmacao        String?
+  data_finalizacao          DateTime?
+  status_pedido             String
+  cep                       String
+  street                    String
+  neighborhood              String
+  city                      String
+  state                     String
+  number                    String
+  complement                String?
+  createdAt                 DateTime      @default(now())
+  updatedAt                 DateTime      @default(now()) @updatedAt
+  Cliente                   Cliente       @relation(fields: [id_cliente], references: [id_cliente])
+  Prestador                 Prestador?    @relation(fields: [id_prestador], references: [id_prestador])
+  Candidatura               Candidatura[]
+  imagens                   Imagem[]
 }
 
 model Imagem {
-  id   Int    @id @default(autoincrement())
-  nome String
-  url  String
-
-  cardId String // chave estrangeira para Card
-  card   Card   @relation(fields: [cardId], references: [id_pedido])
+  id        Int      @id @default(autoincrement())
+  nome      String
+  url       String
+  cardId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  card      Card     @relation(fields: [cardId], references: [id_pedido])
+d], references: [id_pedido])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
