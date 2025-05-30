@@ -14,21 +14,19 @@ export class CardsService {
     private readonly eventsGateway: EventsGateway,
   ) {}
 
-  async create(createCardDto: CreateCardDto) {
+  async create(createCardDto: CreateCardDto, imagensUrl?: string[]) {
     const generateNumericId = customAlphabet('0123456789', 8);
-    const id_pedido = generateNumericId(); // exemplo: '492173'
+    const id_pedido = generateNumericId();
 
-    const createInput: any = {
-      id_pedido: id_pedido, // gera algo como "5gD1kqR7vB"
+    const cardData: any = {
+      id_pedido: id_pedido,
       id_cliente: Number(createCardDto.id_cliente),
-      status_pedido: createCardDto.status_pedido,
       categoria: createCardDto.categoria,
+      status_pedido: createCardDto.status_pedido,
       subcategoria: createCardDto.subcategoria,
       valor: createCardDto.valor,
       horario_preferencial: createCardDto.horario_preferencial,
-
       codigo_confirmacao: createCardDto.codigo_confirmacao,
-
       cep: createCardDto.cep,
       street: createCardDto.street,
       neighborhood: createCardDto.neighborhood,
@@ -38,9 +36,21 @@ export class CardsService {
       complement: createCardDto.complement || null,
     };
 
-    return this.prisma.card.create({
-      data: createInput,
+    if (imagensUrl && imagensUrl.length > 0) {
+      cardData.imagens = {
+        create: imagensUrl.map((url, index) => ({
+          url,
+          nome: `Imagem ${index + 1}`, // obrigatório, colocar algo aqui
+        })),
+      };
+    }
+
+    const novoCard = await this.prisma.card.create({
+      data: cardData,
+      include: { imagens: true },
     });
+
+    return novoCard;
   }
 
   async findAll(
@@ -81,6 +91,7 @@ export class CardsService {
       where: whereClause,
       include: {
         Candidatura: true,
+        imagens: true,
       },
       orderBy: {
         createdAt: 'desc',
@@ -206,6 +217,8 @@ export class CardsService {
         codigo_confirmacao: card.codigo_confirmacao || null,
         data_finalizacao: card.data_finalizacao || null,
 
+        imagens: card.imagens.map((img) => img.url),
+
         address: {
           cep: card.cep,
           street: card.street,
@@ -246,6 +259,7 @@ export class CardsService {
       },
       include: {
         Candidatura: true,
+        imagens: true,
       },
     });
 
@@ -282,6 +296,8 @@ export class CardsService {
       horario_preferencial: card.horario_preferencial,
       codigo_confirmacao: card.codigo_confirmacao || null,
       data_finalizacao: card.data_finalizacao || null,
+
+      imagens: card.imagens.map((img) => img.url),
 
       address: {
         cep: card.cep,

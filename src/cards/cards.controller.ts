@@ -1,35 +1,79 @@
 import {
+  BadRequestException,
   Body,
   Controller,
-  Delete,
   Get,
   Param,
   Post,
   Put,
   Query,
   Req,
+  UploadedFiles,
   UseGuards,
 } from '@nestjs/common';
-import { CardsService } from './cards.service';
-import { CreateCardDto } from './dto/create-card.dto';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
-import { UpdateCardDto } from './dto/update-card.dto';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { AuthGuard } from '@nestjs/passport';
 import { MultiRoleAuthGuard } from 'src/auth/guards/multi-role-auth.guard';
 import { JwtClienteStrategy } from 'src/auth/jwt.strategy/jwt.strategy';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { CardsService } from './cards.service';
+import { UpdateCardDto } from './dto/update-card.dto';
+
+import { UseInterceptors } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import * as multer from 'multer';
+import * as sharp from 'sharp';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 @Controller('cards')
 export class CardsController {
   constructor(
     private readonly cardsService: CardsService,
-    private readonly prisma: PrismaService, // Injeta o PrismaService
+    private readonly prisma: PrismaService,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
+
+  // @UseGuards(JwtClienteStrategy)
+  // @Post()
+  // create(@Body() newCard: CreateCardDto, candidato: UpdateCardDto) {
+  //   return this.cardsService.create(newCard); // Retorna o resultado do serviço
+  // }
 
   @UseGuards(JwtClienteStrategy)
   @Post()
-  create(@Body() newCard: CreateCardDto, candidato: UpdateCardDto) {
-    return this.cardsService.create(newCard); // Retorna o resultado do serviço
+  @UseInterceptors(
+    FilesInterceptor('imagens', 10, {
+      storage: multer.memoryStorage(),
+    }),
+  )
+  async createCard(
+    @UploadedFiles() imagens: Express.Multer.File[],
+    @Body('cardData') cardDataRaw: string,
+  ) {
+    let cardData;
+    try {
+      cardData = JSON.parse(cardDataRaw);
+    } catch (error) {
+      throw new BadRequestException('Dados inválidos no campo cardData');
+    }
+
+    const imageUrls: string[] = [];
+
+    for (const file of imagens || []) {
+      const webpBuffer = await sharp(file.buffer)
+        .webp({ quality: 80 })
+        .toBuffer();
+
+      const uploadResult = await this.cloudinaryService.uploadImage(
+        webpBuffer,
+        file.originalname,
+      );
+
+      imageUrls.push(uploadResult.secure_url);
+    }
+
+    // Cria o card APÓS fazer o upload de todas as imagens
+    const novoCard = await this.cardsService.create(cardData, imageUrls);
+
+    return novoCard; // Retorna o card criado com as imagens do DB
   }
 
   @UseGuards(MultiRoleAuthGuard)
@@ -51,15 +95,11 @@ export class CardsController {
         },
       });
 
-      if (!prestador) {
-        throw new Error('Prestador não encontrado.');
-      }
-
       prestadorInfo = {
         id_prestador: req.user.sub,
-        cpf: prestador.cpf,
-        email: prestador.email,
-        telefone: prestador.telefone,
+        cpf: prestador?.cpf,
+        email: prestador?.email,
+        telefone: prestador?.telefone,
       };
     } else {
       const cliente = await this.prisma.cliente.findUnique({
@@ -72,14 +112,9 @@ export class CardsController {
         },
       });
 
-      if (!cliente) {
-        throw new Error('cliente não encontrado.');
-      }
-
       clienteInfo = cliente;
     }
 
-    // Aqui você passa o status para o service
     return this.cardsService.findAll(prestadorInfo, clienteInfo, status_pedido);
   }
 
@@ -137,9 +172,4 @@ export class CardsController {
   ) {
     return this.cardsService.update(id_pedido, updatedCard); // Atualiza um card
   }
-
-  // @Delete(':id')
-  // remove(@Param('id') client_id: string) {
-  //   return this.cardsService.remove(client_id); // Remove um card
-  // }
 }

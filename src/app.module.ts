@@ -1,14 +1,15 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { CardsModule } from './cards/cards.module';
-import { PrismaModule } from './prisma/prisma.module';
-import { ClienteModule } from './cliente/cliente.module';
 import { AuthModule } from './auth/auth.module';
-import { ConfigModule } from '@nestjs/config';
+import { CardsModule } from './cards/cards.module';
 import { PrestadorModule } from './cliente copy/prestador.module';
+import { ClienteModule } from './cliente/cliente.module';
 import { EventsGateway } from './events/events.gateway';
 import { GeolocationModule } from './geolocation/geolocation.module';
+import { ImagemModule } from './imagem/imagem.module';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
@@ -23,6 +24,8 @@ import { GeolocationModule } from './geolocation/geolocation.module';
     }),
 
     GeolocationModule,
+
+    ImagemModule,
   ],
   controllers: [AppController],
   providers: [AppService, EventsGateway],
