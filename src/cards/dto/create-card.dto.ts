@@ -91,4 +91,7 @@ export class CreateCardDto {
   @IsOptional()
   @IsString()
   complement?: string;
+
+  @IsOptional()
+  imagens?: Express.Multer.File[];
 }

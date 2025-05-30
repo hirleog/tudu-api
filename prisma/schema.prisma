@@ -103,4 +103,18 @@ model Card {
   Cliente     Cliente       @relation(fields: [id_cliente], references: [id_cliente])
   Prestador   Prestador?    @relation(fields: [id_prestador], references: [id_prestador])
   Candidatura Candidatura[]
+
+  imagens Imagem[]
+}
+
+model Imagem {
+  id   Int    @id @default(autoincrement())
+  nome String
+  url  String
+
+  cardId String // chave estrangeira para Card
+  card   Card   @relation(fields: [cardId], references: [id_pedido])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
