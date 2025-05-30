@@ -22,7 +22,8 @@ model Cliente {
   endereco_cidade String?
   endereco_bairro String?
   endereco_rua    String?
-    created_at      DateTime @default(now())
+  endereco_numero String?
+  created_at      DateTime @default(now())
   updated_at      DateTime @default(now()) @updatedAt
   foto            String?
   Card            Card[]
@@ -103,8 +104,4 @@ model Imagem {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
   card      Card     @relation(fields: [cardId], references: [id_pedido])
-d], references: [id_pedido])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
 }
