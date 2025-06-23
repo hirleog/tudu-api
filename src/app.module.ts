@@ -10,6 +10,8 @@ import { EventsGateway } from './events/events.gateway';
 import { GeolocationModule } from './geolocation/geolocation.module';
 import { ImagemModule } from './imagem/imagem.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { PaymentsService } from './payments/payments.service';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -26,8 +28,10 @@ import { PrismaModule } from './prisma/prisma.module';
     GeolocationModule,
 
     ImagemModule,
+
+    PaymentsModule,
   ],
   controllers: [AppController],
-  providers: [AppService, EventsGateway],
+  providers: [AppService, EventsGateway, PaymentsService],
 })
 export class AppModule {}
