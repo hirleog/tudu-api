@@ -63,6 +63,8 @@ export class CardsService {
     } | null,
     clienteInfo: { id_cliente?: number } | null,
     status_pedido?: string,
+    offset: number = 0,
+    limit: number = 10,
   ): Promise<{
     cards: any[];
     counts: { publicado: number; andamento: number; finalizado: number };
@@ -186,7 +188,9 @@ export class CardsService {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
-    const cardsFormatados = cardsFiltrados.map((card) => {
+    const paginatedCards = cardsFiltrados.slice(offset, offset + limit);
+
+    const cardsFormatados = paginatedCards.map((card) => {
       const todasCandidaturas = card.Candidatura.map((c) => ({
         id_candidatura: c.id_candidatura || null,
         prestador_id: c.prestador_id || null,
