@@ -139,7 +139,7 @@ export class PaymentsService {
     }
 
     try {
-      const number_token = await this.tokenizeCard('5469970550374927', '1');
+      const number_token = await this.tokenizeCard('5428203065363270', '1');
 
       const requestData = {
         seller_id: this.sellerId,
@@ -152,20 +152,21 @@ export class PaymentsService {
         },
         customer: {
           customer_id: '1',
-          first_name: 'João',
-          name: 'Matheus B NEITZE',
+          first_name: 'Guilherme',
+          last_name: 'Hirle',
           email: 'customer@email.com.br',
           document_type: 'CPF',
+          document_number: '49306837852',
           phone_number: '5551999887766',
           billing_address: {
-            street: 'Av. Brasil',
-            number: '1000',
-            complement: 'Sala 1',
-            district: 'São Geraldo',
-            city: 'Porto Alegre',
-            state: 'RS',
+            street: 'Rua doutor paulo de andrade arantes',
+            number: '52',
+            complement: 'casa',
+            district: 'São Paulo',
+            city: 'São Paulo',
+            state: 'SP',
             country: 'Brasil',
-            postal_code: '90230060',
+            postal_code: '03451090',
           },
         },
         credit: {
@@ -174,14 +175,15 @@ export class PaymentsService {
           transaction_type: 'FULL',
           number_installments: 1,
           soft_descriptor: 'LOJA*TESTE*COMPRA-123',
-          dynamic_mcc: 1799,
+          dynamic_mcc: 7299,
           card: {
             number_token: number_token,
-            bin: '123412',
-            security_code: '080',
+            brand: 'MASTERCARD',
+            bin: '542820',
+            security_code: '336',
             expiration_month: '12',
             expiration_year: '32',
-            cardholder_name: 'Matheus B NEITZE',
+            cardholder_name: 'GUILHERME HIRLE',
           },
         },
       };
