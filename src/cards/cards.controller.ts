@@ -81,7 +81,13 @@ export class CardsController {
   async findAll(
     @Req() req: any,
     @Query('status_pedido') status_pedido: string,
+    @Query('offset') offset: string,
+    @Query('limit') limit: string,
   ) {
+    // Parse para número e valores padrão
+    const parsedOffset = parseInt(offset) || 0;
+    const parsedLimit = parseInt(limit) || 10;
+
     let prestadorInfo = null;
     let clienteInfo = null;
 
@@ -115,7 +121,13 @@ export class CardsController {
       clienteInfo = cliente;
     }
 
-    return this.cardsService.findAll(prestadorInfo, clienteInfo, status_pedido);
+    return this.cardsService.findAll(
+      prestadorInfo,
+      clienteInfo,
+      status_pedido,
+      parsedOffset,
+      parsedLimit,
+    );
   }
 
   @UseGuards(MultiRoleAuthGuard)

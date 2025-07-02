@@ -15,10 +15,11 @@ export class PaymentsService {
 
   constructor(private configService: ConfigService) {
     const env = this.configService.get<string>('GETNET_ENV') || 'sandbox';
+
     this.baseUrl =
-      env === 'production'
-        ? 'https://api.getnet.com.br'
-        : 'https://api-homologacao.getnet.com.br';
+      process.env.NODE_ENV !== 'production'
+        ? 'https://api-homologacao.getnet.com.br'
+        : 'https://api.getnet.com.br';
 
     this.clientId = this.configService.get<string>('GETNET_CLIENT_ID');
     this.clientSecret = this.configService.get<string>('GETNET_CLIENT_SECRET');
@@ -70,19 +71,29 @@ export class PaymentsService {
    * @returns Promise com o access_token
    */
   private async getAccessToken(): Promise<string> {
+    // Debug 1 - Mostra a baseUrl ANTES de usar
+    console.log('[DEBUG] Valor atual de baseUrl:', this.baseUrl);
+    console.log(
+      '[DEBUG] Tentando obter token em:',
+      `${this.baseUrl}/auth/oauth/v2/token`,
+    );
+
     if (this.accessToken && Date.now() < this.tokenExpiresAt - 30000) {
-      // Adiciona margem de 30 segundos antes da expiração
+      console.log('[DEBUG] Usando token cacheado (ainda válido)');
       return this.accessToken;
     }
 
     const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString(
       'base64',
     );
+    console.log('[DEBUG] Credenciais em Base64:', auth); // Debug 2 - Mostra o auth básico
 
     try {
+      console.log('[DEBUG] Iniciando requisição para obter token...');
+
       const response = await axios.post(
         `${this.baseUrl}/auth/oauth/v2/token`,
-        qs.stringify({ grant_type: 'client_credentials', scope: 'oob' }), // Adicionado scope oob conforme documentação
+        qs.stringify({ grant_type: 'client_credentials', scope: 'oob' }),
         {
           headers: {
             Authorization: `Basic ${auth}`,
@@ -92,15 +103,24 @@ export class PaymentsService {
         },
       );
 
+      console.log('[DEBUG] Token obtido com sucesso!');
+      console.log(
+        '[DEBUG] Token expira em:',
+        response.data.expires_in,
+        'segundos',
+      );
+
       this.accessToken = response.data.access_token;
       this.tokenExpiresAt = Date.now() + response.data.expires_in * 1000;
 
       return this.accessToken;
     } catch (error) {
-      console.error(
-        'Error getting access token:',
-        error.response?.data || error.message,
-      );
+      console.error('[ERROR] Falha ao obter token:');
+      console.error('URL usada:', `${this.baseUrl}/auth/oauth/v2/token`);
+      console.error('Código de status:', error.response?.status);
+      console.error('Resposta do erro:', error.response?.data);
+      console.error('Stack trace:', error.stack);
+
       throw new Error('Failed to get access token');
     }
   }
@@ -119,10 +139,7 @@ export class PaymentsService {
     }
 
     try {
-      const number_token = await this.tokenizeCard(
-        '5469970550374927',
-        '1',
-      );
+      const number_token = await this.tokenizeCard('5469970550374927', '1');
 
       const requestData = {
         seller_id: this.sellerId,
@@ -233,7 +250,7 @@ export class PaymentsService {
         'Error processing payment:',
         error.response?.data || error.message,
       );
-      throw new Error('Failed to process payment');
+      throw new Error(error);
     }
   }
 
