@@ -51,6 +51,10 @@ export class CreateCardDto {
   @IsString()
   subcategoria: string;
 
+  @IsOptional()
+  @IsString()
+  serviceDescription?: string;
+
   @IsNotEmpty()
   @IsString()
   valor: string;

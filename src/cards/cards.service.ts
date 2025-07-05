@@ -24,6 +24,7 @@ export class CardsService {
       categoria: createCardDto.categoria,
       status_pedido: createCardDto.status_pedido,
       subcategoria: createCardDto.subcategoria,
+      serviceDescription: createCardDto.serviceDescription,
       valor: createCardDto.valor,
       horario_preferencial: createCardDto.horario_preferencial,
       codigo_confirmacao: createCardDto.codigo_confirmacao,
@@ -216,6 +217,7 @@ export class CardsService {
 
         categoria: card.categoria,
         subcategoria: card.subcategoria,
+        serviceDescription: card.serviceDescription || null,
         valor: card.valor,
         horario_preferencial: card.horario_preferencial,
         codigo_confirmacao: card.codigo_confirmacao || null,

@@ -74,6 +74,7 @@ model Card {
   id_prestador              Int?
   categoria                 String
   subcategoria              String
+  serviceDescription        String?
   valor                     String
   horario_preferencial      String
   valor_negociado_cliente   String?
