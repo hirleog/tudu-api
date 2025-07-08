@@ -80,13 +80,24 @@ export class CardsController {
   @Get()
   async findAll(
     @Req() req: any,
-    @Query('status_pedido') status_pedido: string,
+    @Query('status_pedido')
+    status_pedido: 'publicado' | 'andamento' | 'finalizado',
     @Query('offset') offset: string,
     @Query('limit') limit: string,
+    @Query('valorMin') valorMin?: string,
+    @Query('valorMax') valorMax?: string,
+    @Query('dataInicial') dataInicial?: string,
+    @Query('dataFinal') dataFinal?: string,
+    @Query('categoria') categoria?: string,
   ) {
-    // Parse para número e valores padrão
-    const parsedOffset = parseInt(offset) || 0;
-    const parsedLimit = parseInt(limit) || 10;
+    // Conversão segura de query params
+    const parsedOffset = Number(offset) || 0;
+    const parsedLimit = Number(limit) || 10;
+    const parsedValorMin = valorMin ? parseFloat(valorMin) : undefined;
+    const parsedValorMax = valorMax ? parseFloat(valorMax) : undefined;
+
+    const parsedDataInicial = dataInicial || undefined;
+    const parsedDataFinal = dataFinal || undefined;
 
     let prestadorInfo = null;
     let clienteInfo = null;
@@ -107,7 +118,7 @@ export class CardsController {
         email: prestador?.email,
         telefone: prestador?.telefone,
       };
-    } else {
+    } else if (req.user.role === 'cliente') {
       const cliente = await this.prisma.cliente.findUnique({
         where: { id_cliente: req.user.sub },
         select: {
@@ -127,6 +138,11 @@ export class CardsController {
       status_pedido,
       parsedOffset,
       parsedLimit,
+      parsedValorMin,
+      parsedValorMax,
+      parsedDataInicial,
+      parsedDataFinal,
+      categoria,
     );
   }
 
