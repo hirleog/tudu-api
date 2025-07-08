@@ -66,6 +66,11 @@ export class CardsService {
     status_pedido?: string,
     offset: number = 0,
     limit: number = 10,
+    valorMin?: number,
+    valorMax?: number,
+    dataInicial?: string,
+    dataFinal?: string,
+    categoria?: string,
   ): Promise<{
     cards: any[];
     counts: { publicado: number; andamento: number; finalizado: number };
@@ -88,6 +93,30 @@ export class CardsService {
           },
         };
 
+    if (valorMin !== undefined) {
+      whereClause.valor = { ...whereClause.valor, gte: valorMin };
+    }
+    if (valorMax !== undefined) {
+      whereClause.valor = { ...whereClause.valor, lte: valorMax };
+    }
+    if (categoria) {
+      whereClause.categoria = categoria;
+    }
+
+    if (dataInicial) {
+      whereClause.horario_preferencial = {
+        ...whereClause.horario_preferencial,
+        gte: `${dataInicial} 00:00`,
+      };
+    }
+
+    if (dataFinal) {
+      whereClause.horario_preferencial = {
+        ...whereClause.horario_preferencial,
+        lte: `${dataFinal} 23:59`,
+      };
+    }
+
     const prestadorId = Number(id_prestador);
 
     const allCards = await this.prisma.card.findMany({
@@ -101,7 +130,6 @@ export class CardsService {
       },
     });
 
-    // ✅ Aqui o count sempre considera todos os cards
     const counts = {
       publicado: allCards.filter(
         (card) =>
@@ -130,7 +158,6 @@ export class CardsService {
       }).length,
     };
 
-    // 🎯 Aplica filtro de exibição por status apenas aqui
     const cardsFiltrados = allCards.filter((card) => {
       if (status_pedido === 'publicado') {
         return (
@@ -154,9 +181,7 @@ export class CardsService {
       if (status_pedido === 'finalizado') {
         return (
           card.status_pedido === 'finalizado' &&
-          // Cliente: deve ver seus próprios cards finalizados
           ((id_cliente && card.id_cliente === id_cliente) ||
-            // Prestador: deve ver os que ele participou
             card.Candidatura.some((c) => c.prestador_id === prestadorId))
         );
       }
@@ -178,18 +203,16 @@ export class CardsService {
         );
       }
 
-      if (isAAndamento && !isBAndamento) {
-        return -1;
-      }
-
-      if (!isAAndamento && isBAndamento) {
-        return 1;
-      }
+      if (isAAndamento && !isBAndamento) return -1;
+      if (!isAAndamento && isBAndamento) return 1;
 
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
-    const paginatedCards = cardsFiltrados.slice(offset, offset + limit);
+    // 🛠 Correção: previne slice inválido
+    const totalFiltrados = cardsFiltrados.length;
+    const safeOffset = offset >= totalFiltrados ? 0 : offset;
+    const paginatedCards = cardsFiltrados.slice(safeOffset, safeOffset + limit);
 
     const cardsFormatados = paginatedCards.map((card) => {
       const todasCandidaturas = card.Candidatura.map((c) => ({
@@ -203,7 +226,7 @@ export class CardsService {
 
       const candidaturasFiltradas =
         id_cliente !== undefined
-          ? todasCandidaturas.filter((c) => c.status !== 'recusado') // 👈 aqui o filtro extra
+          ? todasCandidaturas.filter((c) => c.status !== 'recusado')
           : todasCandidaturas.filter((c) => c.prestador_id === prestadorId);
 
       return {
@@ -214,7 +237,6 @@ export class CardsService {
             ? candidaturasFiltradas[0].prestador_id
             : null,
         status_pedido: card.status_pedido,
-
         categoria: card.categoria,
         subcategoria: card.subcategoria,
         serviceDescription: card.serviceDescription || null,
@@ -222,9 +244,7 @@ export class CardsService {
         horario_preferencial: card.horario_preferencial,
         codigo_confirmacao: card.codigo_confirmacao || null,
         data_finalizacao: card.data_finalizacao || null,
-
         imagens: card.imagens.map((img) => img.url),
-
         address: {
           cep: card.cep,
           street: card.street,
@@ -234,7 +254,6 @@ export class CardsService {
           number: card.number,
           complement: card.complement || null,
         },
-
         candidaturas: candidaturasFiltradas,
         createdAt: card.createdAt,
         updatedAt: card.updatedAt,
