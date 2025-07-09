@@ -93,11 +93,30 @@ export class CardsController {
     // Conversão segura de query params
     const parsedOffset = Number(offset) || 0;
     const parsedLimit = Number(limit) || 10;
-    const parsedValorMin = valorMin ? parseFloat(valorMin) : undefined;
-    const parsedValorMax = valorMax ? parseFloat(valorMax) : undefined;
 
     const parsedDataInicial = dataInicial || undefined;
     const parsedDataFinal = dataFinal || undefined;
+
+    // Tratamento seguro dos valores
+    const parsedValorMin = valorMin
+      ? parseFloat(valorMin.replace(',', '.'))
+      : undefined;
+    const parsedValorMax = valorMax
+      ? parseFloat(valorMax.replace(',', '.'))
+      : undefined;
+
+    if (
+      (parsedValorMin !== undefined && isNaN(parsedValorMin)) ||
+      (parsedValorMax !== undefined && isNaN(parsedValorMax))
+    ) {
+      throw new BadRequestException(
+        'Valores mínimo e máximo devem ser números válidos',
+      );
+    }
+
+    if (!req.user.role) {
+      throw new Error('Prestador não encontrado.');
+    }
 
     let prestadorInfo = null;
     let clienteInfo = null;
