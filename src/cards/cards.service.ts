@@ -66,8 +66,8 @@ export class CardsService {
     status_pedido?: string,
     offset: number = 0,
     limit: number = 10,
-    valorMin?: number,
-    valorMax?: number,
+    valorMin?: number | string,
+    valorMax?: number | string,
     dataInicial?: string,
     dataFinal?: string,
     categoria?: string,
@@ -93,14 +93,19 @@ export class CardsService {
           },
         };
 
-    if (valorMin !== undefined) {
-      whereClause.valor = { ...whereClause.valor, gte: valorMin };
-    }
-    if (valorMax !== undefined) {
-      whereClause.valor = { ...whereClause.valor, lte: valorMax };
-    }
-    if (categoria) {
-      whereClause.categoria = categoria;
+    // CORREÇÃO: Filtro por valor mínimo e máximo
+    if (valorMin !== undefined || valorMax !== undefined) {
+      whereClause.valor = {};
+
+      if (valorMin !== undefined) {
+        whereClause.valor.gte =
+          typeof valorMin === 'string' ? parseFloat(valorMin) : valorMin;
+      }
+
+      if (valorMax !== undefined) {
+        whereClause.valor.lte =
+          typeof valorMax === 'string' ? parseFloat(valorMax) : valorMax;
+      }
     }
 
     if (dataInicial) {
@@ -116,7 +121,10 @@ export class CardsService {
         lte: `${dataFinal} 23:59`,
       };
     }
-
+    if (categoria) {
+      whereClause.categoria = categoria;
+    }
+    
     const prestadorId = Number(id_prestador);
 
     const allCards = await this.prisma.card.findMany({
@@ -240,7 +248,7 @@ export class CardsService {
         categoria: card.categoria,
         subcategoria: card.subcategoria,
         serviceDescription: card.serviceDescription || null,
-        valor: card.valor,
+        valor: card.valor.toString(),
         horario_preferencial: card.horario_preferencial,
         codigo_confirmacao: card.codigo_confirmacao || null,
         data_finalizacao: card.data_finalizacao || null,

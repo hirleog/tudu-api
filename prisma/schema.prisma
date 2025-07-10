@@ -75,7 +75,7 @@ model Card {
   categoria                 String
   subcategoria              String
   serviceDescription        String?
-  valor                     String
+  valor                     Decimal       @db.Decimal(10, 2)
   horario_preferencial      String
   valor_negociado_cliente   String?
   horario_negociado_cliente String?

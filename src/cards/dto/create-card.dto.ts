@@ -1,5 +1,7 @@
+import { Transform } from 'class-transformer';
 import {
   IsArray,
+  isDecimal,
   IsNotEmpty,
   IsNumberString,
   IsOptional,
@@ -56,7 +58,8 @@ export class CreateCardDto {
   serviceDescription?: string;
 
   @IsNotEmpty()
-  @IsString()
+  @IsNumberString()
+  @Transform(({ value }) => parseFloat(value).toFixed(2))
   valor: string;
 
   @IsNotEmpty()
