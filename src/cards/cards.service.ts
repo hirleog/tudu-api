@@ -248,7 +248,7 @@ export class CardsService {
         categoria: card.categoria,
         subcategoria: card.subcategoria,
         serviceDescription: card.serviceDescription || null,
-        valor: card.valor,
+        valor: card.valor.toString(),
         horario_preferencial: card.horario_preferencial,
         codigo_confirmacao: card.codigo_confirmacao || null,
         data_finalizacao: card.data_finalizacao || null,
