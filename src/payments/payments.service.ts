@@ -143,7 +143,7 @@ export class PaymentsService {
 
       const requestData = {
         seller_id: this.sellerId,
-        amount: 1,
+        amount: 10000,
         currency: 'BRL',
         order: {
           order_id: '6d2e4380-d8a3-4ccb-9138-c289182818a3',
@@ -180,7 +180,7 @@ export class PaymentsService {
             number_token: number_token,
             brand: 'MASTERCARD',
             bin: '542820',
-            security_code: '336',
+            security_code: '856',
             expiration_month: '12',
             expiration_year: '32',
             cardholder_name: 'GUILHERME HIRLE',
