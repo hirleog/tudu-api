@@ -202,16 +202,16 @@ export class PaymentsService {
           last_name: 'Hirle',
           document_type: 'CPF',
           document_number: '49306837852', // CPF válido para homologação
-          email: 'teste@getnet.com.br',
-          phone_number: '51999999999',
+          email: 'guilherme.hirle1@gmail.com',
+          phone_number: '5511974109625',
           billing_address: {
-            street: 'Av. Teste',
-            number: '123',
+            street: 'Rua Doutor Paulo de Andrade Arantes',
+            number: '52',
             district: 'Centro',
-            city: 'Porto Alegre',
-            state: 'RS',
+            city: 'São Paulo',
+            state: 'SP',
             country: 'Brasil',
-            postal_code: '90000000',
+            postal_code: '03451090', // CEP válido para homologação
           },
         },
         device: {
