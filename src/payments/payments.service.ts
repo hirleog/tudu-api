@@ -141,48 +141,95 @@ export class PaymentsService {
     try {
       const number_token = await this.tokenizeCard('5428203065363270', '1');
 
+      // const requestData = {
+      //   seller_id: this.sellerId,
+      //   amount: 10000,
+      //   currency: 'BRL',
+      //   order: {
+      //     order_id: '6d2e4380-d8a3-4ccb-9138-c289182818a3',
+      //     sales_tax: 0,
+      //     product_type: 'service',
+      //   },
+      //   customer: {
+      //     customer_id: '1',
+      //     first_name: 'Guilherme',
+      //     last_name: 'Hirle',
+      //     email: 'customer@email.com.br',
+      //     document_type: 'CPF',
+      //     document_number: '49306837852',
+      //     phone_number: '5551999887766',
+      //     billing_address: {
+      //       street: 'Rua doutor paulo de andrade arantes',
+      //       number: '52',
+      //       complement: 'casa',
+      //       district: 'São Paulo',
+      //       city: 'São Paulo',
+      //       state: 'SP',
+      //       country: 'Brasil',
+      //       postal_code: '03451090',
+      //     },
+      //   },
+      //   credit: {
+      //     delayed: false,
+      //     save_card_data: false,
+      //     transaction_type: 'FULL',
+      //     number_installments: 1,
+      //     soft_descriptor: 'LOJA*TESTE*COMPRA-123',
+      //     dynamic_mcc: 7299,
+      //     card: {
+      //       number_token: number_token,
+      //       brand: 'MASTERCARD',
+      //       bin: '542820',
+      //       security_code: '856',
+      //       expiration_month: '12',
+      //       expiration_year: '32',
+      //       cardholder_name: 'GUILHERME HIRLE',
+      //     },
+      //   },
+      // };
+
       const requestData = {
-        seller_id: this.sellerId,
-        amount: 10000,
+        seller_id: this.sellerId, // Verifique se está correto
+        amount: 10000, // R$ 1,00 (em centavos)
         currency: 'BRL',
         order: {
-          order_id: '6d2e4380-d8a3-4ccb-9138-c289182818a3',
-          sales_tax: 0,
+          order_id: 'TEST-' + Date.now(), // IDs devem ser únicos
           product_type: 'service',
         },
         customer: {
           customer_id: '1',
           first_name: 'Guilherme',
           last_name: 'Hirle',
-          email: 'customer@email.com.br',
           document_type: 'CPF',
-          document_number: '49306837852',
-          phone_number: '5551999887766',
+          document_number: '49306837852', // CPF válido para homologação
+          email: 'teste@getnet.com.br',
+          phone_number: '51999999999',
           billing_address: {
-            street: 'Rua doutor paulo de andrade arantes',
-            number: '52',
-            complement: 'casa',
-            district: 'São Paulo',
-            city: 'São Paulo',
-            state: 'SP',
+            street: 'Av. Teste',
+            number: '123',
+            district: 'Centro',
+            city: 'Porto Alegre',
+            state: 'RS',
             country: 'Brasil',
-            postal_code: '03451090',
+            postal_code: '90000000',
           },
+        },
+        device: {
+          ip_address: '127.0.0.1', // Obrigatório para antifraude
         },
         credit: {
           delayed: false,
           save_card_data: false,
           transaction_type: 'FULL',
           number_installments: 1,
-          soft_descriptor: 'LOJA*TESTE*COMPRA-123',
+          soft_descriptor: 'LOJA*TESTE',
           dynamic_mcc: 7299,
           card: {
-            number_token: number_token,
+            number_token: number_token, // Gerado anteriormente
             brand: 'MASTERCARD',
-            bin: '542820',
-            security_code: '856',
+            security_code: '856', // CVV de teste
             expiration_month: '12',
-            expiration_year: '32',
+            expiration_year: '30', // 2030
             cardholder_name: 'GUILHERME HIRLE',
           },
         },
