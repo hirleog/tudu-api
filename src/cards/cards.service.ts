@@ -124,7 +124,7 @@ export class CardsService {
     if (categoria) {
       whereClause.categoria = categoria;
     }
-    
+
     const prestadorId = Number(id_prestador);
 
     const allCards = await this.prisma.card.findMany({
@@ -134,7 +134,7 @@ export class CardsService {
         imagens: true,
       },
       orderBy: {
-        createdAt: 'desc',
+        updatedAt: 'desc', // Alterado para usar updatedAt como ordenação primária
       },
     });
 
@@ -214,7 +214,7 @@ export class CardsService {
       if (isAAndamento && !isBAndamento) return -1;
       if (!isAAndamento && isBAndamento) return 1;
 
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
 
     // 🛠 Correção: previne slice inválido
@@ -263,8 +263,8 @@ export class CardsService {
           complement: card.complement || null,
         },
         candidaturas: candidaturasFiltradas,
-        createdAt: card.createdAt,
-        updatedAt: card.updatedAt,
+        createdAt: this.adjustTimezone(card.createdAt),
+        updatedAt: this.adjustTimezone(card.updatedAt),
       };
     });
 
@@ -453,5 +453,12 @@ export class CardsService {
       where: { id_pedido },
       include: { Candidatura: true },
     });
+  }
+
+  adjustTimezone(date: Date): Date {
+    const adjustedDate = new Date(date);
+    // Ajuste de -3 horas para UTC-3 (Brasília)
+    adjustedDate.setHours(adjustedDate.getHours() - 3);
+    return adjustedDate;
   }
 }
