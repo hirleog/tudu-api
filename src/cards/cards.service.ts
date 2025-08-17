@@ -5,6 +5,7 @@ import { card } from './entities/card.entity';
 import { UpdateCardDto } from './dto/update-card.dto';
 import { customAlphabet } from 'nanoid';
 import { EventsGateway } from 'src/events/events.gateway';
+import { Card } from './entities/showcase-card.entity';
 @Injectable()
 export class CardsService {
   private cards: card[] = []; // Simulação de banco de dados em memória
@@ -460,5 +461,112 @@ export class CardsService {
     // Ajuste de -3 horas para UTC-3 (Brasília)
     adjustedDate.setHours(adjustedDate.getHours() - 3);
     return adjustedDate;
+  }
+
+  private readonly showcaseCards: Card[] = [
+    {
+      id: 1,
+      icon: 'fas fa-tools',
+      cardDetail: {
+        label: 'Reparos e Manutenção',
+        value: 'reparos',
+      },
+      disabled: false,
+    },
+    {
+      id: 2,
+      icon: 'fas fa-broom',
+      cardDetail: {
+        label: 'Limpeza e Higienização',
+        value: 'limpeza',
+      },
+      disabled: false,
+    },
+    {
+      id: 3,
+      icon: 'fas fa-hard-hat',
+      cardDetail: {
+        label: 'Reformas e Construção',
+        value: 'construcao',
+      },
+      disabled: false,
+    },
+    {
+      id: 4,
+      icon: 'fas fa-cogs',
+      cardDetail: {
+        label: 'Montagem e Instalação',
+        value: 'montagem',
+      },
+      disabled: false,
+    },
+    {
+      id: 5,
+      icon: 'fas fa-seedling',
+      cardDetail: {
+        label: 'Jardim e Piscina',
+        value: 'jardim',
+      },
+      disabled: false,
+    },
+    {
+      id: 6,
+      icon: 'fas fa-ellipsis-h',
+      cardDetail: {
+        label: 'Outros serviços',
+        value: 'outros',
+      },
+      disabled: false,
+    },
+  ];
+
+  async getServiceCardsWithDisabled(
+    clientId: number,
+  ): Promise<{ cards: Card[]; counts: any }> {
+    try {
+      // 1. Buscar cards do cliente que NÃO estão finalizados
+      const clientCards = await this.prisma.card.findMany({
+        where: {
+          id_cliente: clientId,
+          NOT: {
+            status_pedido: 'finalizado',
+          },
+        },
+        select: {
+          categoria: true,
+          status_pedido: true,
+        },
+      });
+
+      // 2. Extrair categorias únicas dos cards ativos do cliente
+      const activeCategories = [
+        ...new Set(
+          clientCards
+            .filter((card) => card.status_pedido !== 'finalizado')
+            .map((card) => card.categoria),
+        ),
+      ];
+
+      // 3. Processar os cards do showcase
+      const processedCards = this.showcaseCards.map((card) => {
+        const isDisabled = activeCategories.includes(card.cardDetail.label);
+        return {
+          ...card,
+          disabled: isDisabled,
+        };
+      });
+
+      return {
+        cards: processedCards,
+        counts: {
+          total: processedCards.length,
+          disabled: activeCategories.length,
+          activeCards: clientCards.length,
+        },
+      };
+    } catch (error) {
+      console.error('Error in getServiceCardsWithDisabled:', error);
+      throw error;
+    }
   }
 }

@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  InternalServerErrorException,
   Param,
   Post,
   Put,
@@ -22,6 +23,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import * as sharp from 'sharp';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
+import { Card } from './entities/showcase-card.entity';
 
 @Controller('cards')
 export class CardsController {
@@ -218,5 +220,16 @@ export class CardsController {
     @Req() req: any, // Injetando o contexto da requisição
   ) {
     return this.cardsService.update(id_pedido, updatedCard); // Atualiza um card
+  }
+
+  @UseGuards(MultiRoleAuthGuard)
+  @Get('list/showcase')
+  async getServiceCards(@Req() req): Promise<{ cards: Card[]; counts: any }> {
+    try {
+      return await this.cardsService.getServiceCardsWithDisabled(req.user.sub);
+    } catch (error) {
+      console.error('Error in /list/showcase endpoint:', error);
+      throw new InternalServerErrorException('Failed to load showcase cards');
+    }
   }
 }
