@@ -133,163 +133,80 @@ export class PaymentsService {
   async processCreditCardPayment(payload: any) {
     const token = await this.getAccessToken();
 
-    // Validações básicas
-    if (!payload.card_number || !payload.customer_id) {
-      throw new Error('Card number and customer ID are required');
-    }
-
     try {
-      const number_token = await this.tokenizeCard('5428203065363270', '1');
+      // 1. Tokenização do cartão (substitua pela sua lógica real)
+      const number_token = await this.tokenizeCard(
+        payload.credit.card.number_token, // Número do cartão já sem formatação
+        payload.customer.customer_id,
+      );
 
-      // const requestData = {
-      //   seller_id: this.sellerId,
-      //   amount: 10000,
-      //   currency: 'BRL',
-      //   order: {
-      //     order_id: '6d2e4380-d8a3-4ccb-9138-c289182818a3',
-      //     sales_tax: 0,
-      //     product_type: 'service',
-      //   },
-      //   customer: {
-      //     customer_id: '1',
-      //     first_name: 'Guilherme',
-      //     last_name: 'Hirle',
-      //     email: 'customer@email.com.br',
-      //     document_type: 'CPF',
-      //     document_number: '49306837852',
-      //     phone_number: '5551999887766',
-      //     billing_address: {
-      //       street: 'Rua doutor paulo de andrade arantes',
-      //       number: '52',
-      //       complement: 'casa',
-      //       district: 'São Paulo',
-      //       city: 'São Paulo',
-      //       state: 'SP',
-      //       country: 'Brasil',
-      //       postal_code: '03451090',
-      //     },
-      //   },
-      //   credit: {
-      //     delayed: false,
-      //     save_card_data: false,
-      //     transaction_type: 'FULL',
-      //     number_installments: 1,
-      //     soft_descriptor: 'LOJA*TESTE*COMPRA-123',
-      //     dynamic_mcc: 7299,
-      //     card: {
-      //       number_token: number_token,
-      //       brand: 'MASTERCARD',
-      //       bin: '542820',
-      //       security_code: '856',
-      //       expiration_month: '12',
-      //       expiration_year: '32',
-      //       cardholder_name: 'GUILHERME HIRLE',
-      //     },
-      //   },
-      // };
-
+      // 2. Montar o payload para a API de pagamentos
       const requestData = {
-        seller_id: this.sellerId, // Verifique se está correto
-        amount: 10000, // R$ 1,00 (em centavos)
-        currency: 'BRL',
+        seller_id: this.sellerId,
+        amount: payload.amount,
+        currency: payload.currency || 'BRL',
         order: {
-          order_id: 'TEST-' + Date.now(), // IDs devem ser únicos
-          product_type: 'service',
+          order_id: payload.order.order_id,
+          product_type: payload.order.product_type || 'service',
         },
         customer: {
-          customer_id: '1',
-          first_name: 'Guilherme',
-          last_name: 'Hirle',
-          document_type: 'CPF',
-          document_number: '49306837852', // CPF válido para homologação
-          email: 'guilherme.hirle1@gmail.com',
-          phone_number: '5511974109625',
+          customer_id: payload.customer.customer_id,
+          first_name: payload.customer.first_name,
+          last_name: payload.customer.last_name,
+          document_type: payload.customer.document_type || 'CPF',
+          document_number: payload.customer.document_number,
+          email: payload.customer.email,
+          phone_number: payload.customer.phone_number,
           billing_address: {
-            street: 'Rua Doutor Paulo de Andrade Arantes',
-            number: '52',
-            district: 'Centro',
-            city: 'São Paulo',
-            state: 'SP',
-            country: 'Brasil',
-            postal_code: '03451090', // CEP válido para homologação
+            street: payload.customer.billing_address.street,
+            number: payload.customer.billing_address.number,
+            district: payload.customer.billing_address.district,
+            city: payload.customer.billing_address.city,
+            state: payload.customer.billing_address.state,
+            country: payload.customer.billing_address.country || 'Brasil',
+            postal_code: payload.customer.billing_address.postal_code,
           },
         },
         device: {
-          ip_address: '127.0.0.1', // Obrigatório para antifraude
+          ip_address: payload.device.ip_address || '127.0.0.1',
         },
         credit: {
-          delayed: false,
-          save_card_data: false,
-          transaction_type: 'FULL',
-          number_installments: 1,
-          soft_descriptor: 'LOJA*TESTE',
-          dynamic_mcc: 7299,
+          delayed: payload.credit.delayed || false,
+          save_card_data: payload.credit.save_card_data || false,
+          transaction_type: payload.credit.transaction_type || 'FULL',
+          number_installments: payload.credit.number_installments || 1,
+          soft_descriptor: payload.credit.soft_descriptor || 'TUDU',
+          dynamic_mcc: payload.credit.dynamic_mcc || 7299,
           card: {
-            number_token: number_token, // Gerado anteriormente
-            brand: 'MASTERCARD',
-            security_code: '856', // CVV de teste
-            expiration_month: '12',
-            expiration_year: '30', // 2030
-            cardholder_name: 'GUILHERME HIRLE',
+            number_token: number_token,
+            brand: payload.credit.card.brand,
+            security_code: payload.credit.card.security_code,
+            expiration_month: payload.credit.card.expiration_month,
+            expiration_year: payload.credit.card.expiration_year,
+            cardholder_name: payload.credit.card.cardholder_name,
           },
         },
       };
 
-      // const requestData = {
-      //   seller_id: this.sellerId,
-      //   amount: payload.amount,
-      //   currency: 'BRL',
-      //   order: {
-      //     order_id: payload.order_id || `order_${Date.now()}`,
-      //     product_type: payload.product_type || 'service', // Adicionado conforme documentação
-      //   },
-      //   customer: {
-      //     customer_id: payload.customer_id,
-      //     first_name: payload.first_name || 'Cliente',
-      //     last_name: payload.last_name || 'Não Informado',
-      //     name:
-      //       payload.name || `${payload.first_name} ${payload.last_name}`.trim(),
-      //     email: payload.email || 'no-reply@example.com',
-      //     document_type: payload.document_type || 'CPF',
-      //     document_number: payload.document_number || '00000000000',
-      //   },
-      //   device: {
-      //     ip_address: payload.ip_address || '127.0.0.1',
-      //     device_id: payload.device_id || 'device_id',
-      //   },
-      //   shippings: payload.shippings || [],
-      //   credit: {
-      //     delayed: false,
-      //     pre_authorization: payload.pre_authorization || false,
-      //     save_card_data: payload.save_card_data || false,
-      //     transaction_type: payload.transaction_type || 'FULL',
-      //     number_installments: payload.number_installments || 1,
-      //     soft_descriptor: payload.soft_descriptor || 'Loja',
-      //     dynamic_mcc: payload.dynamic_mcc || 0,
-      //     number_token,
-      //     cardholder_name: payload.cardholder_name,
-      //     expiration_month: payload.expiration_month,
-      //     expiration_year: payload.expiration_year,
-      //     security_code: payload.security_code,
-      //     brand: payload.brand,
-      //     // Adicionado campos recomendados pela documentação
-      //     authenticated: payload.authenticated || false,
-      //     authentication_method:
-      //       payload.authentication_method || 'no-authentication',
-      //   },
-      //   sub_merchant: payload.sub_merchant,
-      // };
+      // 3. Validações adicionais
+      if (!number_token) {
+        throw new Error('Falha na tokenização do cartão');
+      }
 
+      // if (!this.validateCreditCardData(requestData.credit.card)) {
+      //   throw new Error('Dados do cartão inválidos');
+      // }
+
+      // 4. Chamada para a API de pagamentos
       const response = await axios.post(
         `${this.baseUrl}/v1/payments/credit`,
         requestData,
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            // Authorization: `Bearer 72402c54-6bd3-4895-a6b4-adfded0c11dc`,
             'Content-Type': 'application/json',
           },
-          timeout: 10000, // 10 segundos para transação
+          timeout: 10000,
         },
       );
 
@@ -299,7 +216,9 @@ export class PaymentsService {
         'Error processing payment:',
         error.response?.data || error.message,
       );
-      throw new Error(error);
+      throw new Error(
+        error.response?.data?.message || 'Erro ao processar pagamento',
+      );
     }
   }
 
