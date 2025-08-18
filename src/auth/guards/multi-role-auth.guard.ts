@@ -14,34 +14,36 @@ export class MultiRoleAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const token = this.extractToken(request);
 
-    if (!token) {
-      throw new UnauthorizedException('Token não fornecido');
-    }
-
-    // Tenta autenticar como cliente primeiro
-    try {
-      const clienteGuard = this.getAuthGuard('jwt-cliente');
-      await clienteGuard.canActivate(context);
-      request.userType = 'cliente';
-      return true;
-    } catch (clienteError) {
-      // Se falhar, tenta como prestador
+    if (token || (token && request.path === '/cards/list/showcase')) {
+      // Tenta autenticar como cliente primeiro
       try {
-        const prestadorGuard = this.getAuthGuard('jwt-prestador');
-        await prestadorGuard.canActivate(context);
-        request.userType = 'prestador';
+        const clienteGuard = this.getAuthGuard('jwt-cliente');
+        await clienteGuard.canActivate(context);
+        request.userType = 'cliente';
         return true;
-      } catch (prestadorError) {
-        // Analisa qual erro mostrar
-        throw this.determineBestError(clienteError, prestadorError);
+      } catch (clienteError) {
+        // Se falhar, tenta como prestador
+        try {
+          const prestadorGuard = this.getAuthGuard('jwt-prestador');
+          await prestadorGuard.canActivate(context);
+          request.userType = 'prestador';
+          return true;
+        } catch (prestadorError) {
+          // Analisa qual erro mostrar
+          throw this.determineBestError(clienteError, prestadorError);
+        }
       }
+    } else if (!token && request.path === '/cards/list/showcase') {
+      return true; // Permite acesso sem autenticação para esta rota específica
+    } else {
+      throw new UnauthorizedException('Token inválido ou ausente');
     }
   }
 
   private extractToken(request: Request): string | null {
     const authHeader = request.headers['authorization'];
     if (!authHeader) return null;
-    
+
     const [type, token] = authHeader.split(' ');
     return type === 'Bearer' ? token : null;
   }
@@ -65,12 +67,21 @@ export class MultiRoleAuthGuard implements CanActivate {
     })();
   }
 
-  private determineBestError(clienteError: any, prestadorError: any): UnauthorizedException {
+  private determineBestError(
+    clienteError: any,
+    prestadorError: any,
+  ): UnauthorizedException {
     // Prioriza erros de token expirado sobre inválidos
     const errors = [clienteError, prestadorError];
-    const expiredError = errors.find(e => e?.response?.message === 'Token expirado');
-    
-    return expiredError || 
-      new UnauthorizedException('Credenciais inválidas para ambos cliente e prestador');
+    const expiredError = errors.find(
+      (e) => e?.response?.message === 'Token expirado',
+    );
+
+    return (
+      expiredError ||
+      new UnauthorizedException(
+        'Credenciais inválidas para ambos cliente e prestador',
+      )
+    );
   }
 }

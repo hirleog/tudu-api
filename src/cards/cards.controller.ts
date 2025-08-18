@@ -222,11 +222,12 @@ export class CardsController {
     return this.cardsService.update(id_pedido, updatedCard); // Atualiza um card
   }
 
-  // @UseGuards(MultiRoleAuthGuard)
+  @UseGuards(MultiRoleAuthGuard)
   @Get('list/showcase')
   async getServiceCards(@Req() req): Promise<{ cards: Card[]; counts: any }> {
     try {
-      return await this.cardsService.getServiceCardsWithDisabled(req.user.sub);
+      const userId = req.user?.sub || undefined;
+      return await this.cardsService.getServiceCardsWithDisabled(userId);
     } catch (error) {
       console.error('Error in /list/showcase endpoint:', error);
       throw new InternalServerErrorException('Failed to load showcase cards');

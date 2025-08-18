@@ -523,45 +523,50 @@ export class CardsService {
   async getServiceCardsWithDisabled(
     clientId: number,
   ): Promise<{ cards: Card[]; counts: any }> {
+    let processedCards = [];
+    let activeCategories = [];
+
     try {
       // 1. Buscar cards do cliente que NÃO estão finalizados
-      const clientCards = await this.prisma.card.findMany({
-        where: {
-          id_cliente: clientId,
-          NOT: {
-            status_pedido: 'finalizado',
+      if (clientId !== undefined) {
+        const clientCards = await this.prisma.card.findMany({
+          where: {
+            id_cliente: clientId,
+            NOT: {
+              status_pedido: 'finalizado',
+            },
           },
-        },
-        select: {
-          categoria: true,
-          status_pedido: true,
-        },
-      });
+          select: {
+            categoria: true,
+            status_pedido: true,
+          },
+        });
 
-      // 2. Extrair categorias únicas dos cards ativos do cliente
-      const activeCategories = [
-        ...new Set(
-          clientCards
-            .filter((card) => card.status_pedido !== 'finalizado')
-            .map((card) => card.categoria),
-        ),
-      ];
+        // 2. Extrair categorias únicas dos cards ativos do cliente
+        activeCategories = [
+          ...new Set(
+            clientCards
+              .filter((card) => card.status_pedido !== 'finalizado')
+              .map((card) => card.categoria),
+          ),
+        ];
 
-      // 3. Processar os cards do showcase
-      const processedCards = this.showcaseCards.map((card) => {
-        const isDisabled = activeCategories.includes(card.cardDetail.label);
-        return {
-          ...card,
-          disabled: isDisabled,
-        };
-      });
+        // 3. Processar os cards do showcase
+        processedCards = this.showcaseCards.map((card) => {
+          const isDisabled = activeCategories.includes(card.cardDetail.label);
+          return {
+            ...card,
+            disabled: isDisabled,
+          };
+        });
+      }
 
       return {
-        cards: processedCards,
+        cards: clientId !== undefined ? processedCards : this.showcaseCards,
         counts: {
           total: processedCards.length,
           disabled: activeCategories.length,
-          activeCards: clientCards.length,
+          // activeCards: clientCards.length,
         },
       };
     } catch (error) {
