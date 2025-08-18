@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import * as qs from 'qs';
+const https = require('https');
+const tls = require('tls');
 
 @Injectable()
 export class PaymentsService {
@@ -188,6 +190,8 @@ export class PaymentsService {
         },
       };
 
+      console.log('Request data:', JSON.stringify(requestData, null, 2));
+
       // 3. Validações adicionais
       if (!number_token) {
         throw new Error('Falha na tokenização do cartão');
@@ -197,7 +201,6 @@ export class PaymentsService {
       //   throw new Error('Dados do cartão inválidos');
       // }
 
-      // 4. Chamada para a API de pagamentos
       const response = await axios.post(
         `${this.baseUrl}/v1/payments/credit`,
         requestData,
@@ -207,6 +210,13 @@ export class PaymentsService {
             'Content-Type': 'application/json',
           },
           timeout: 10000,
+          httpsAgent: new https.Agent({
+            secureOptions:
+              tls.constants.SSL_OP_NO_SSLv3 |
+              tls.constants.SSL_OP_NO_TLSv1 |
+              tls.constants.SSL_OP_NO_TLSv1_1,
+            minVersion: 'TLSv1.2',
+          }),
         },
       );
 
