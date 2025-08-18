@@ -190,16 +190,18 @@ export class PaymentsService {
         },
       };
 
-      console.log('Request data:', JSON.stringify(requestData, null, 2));
+      console.log('Request data:', JSON.stringify(requestData));
 
       // 3. Validações adicionais
       if (!number_token) {
         throw new Error('Falha na tokenização do cartão');
       }
 
-      // if (!this.validateCreditCardData(requestData.credit.card)) {
-      //   throw new Error('Dados do cartão inválidos');
-      // }
+      // 4. Configuração HTTPS
+      const httpsAgent = new https.Agent({
+        minVersion: 'TLSv1.2',
+        rejectUnauthorized: true, // Importante para produção
+      });
 
       const response = await axios.post(
         `${this.baseUrl}/v1/payments/credit`,
@@ -209,22 +211,19 @@ export class PaymentsService {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
+          httpsAgent,
           timeout: 10000,
-          httpsAgent: new https.Agent({
-            secureOptions:
-              tls.constants.SSL_OP_NO_SSLv3 |
-              tls.constants.SSL_OP_NO_TLSv1 |
-              tls.constants.SSL_OP_NO_TLSv1_1,
-            minVersion: 'TLSv1.2',
-          }),
         },
       );
-
       return response.data;
     } catch (error) {
       console.error(
         'Error processing payment:',
         error.response?.data || error.message,
+        console.log(
+          'Antifraud details:',
+          error.response?.data?.details?.[0]?.antifraud,
+        ),
       );
       throw new Error(
         error.response?.data?.message || 'Erro ao processar pagamento',
