@@ -222,7 +222,7 @@ export class CardsController {
     return this.cardsService.update(id_pedido, updatedCard); // Atualiza um card
   }
 
-  @UseGuards(MultiRoleAuthGuard)
+  // @UseGuards(MultiRoleAuthGuard)
   @Get('list/showcase')
   async getServiceCards(@Req() req): Promise<{ cards: Card[]; counts: any }> {
     try {
