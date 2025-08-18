@@ -181,7 +181,7 @@ export class PaymentsService {
           dynamic_mcc: payload.credit.dynamic_mcc || 7299,
           card: {
             number_token: number_token,
-            brand: payload.credit.card.brand,
+            // brand: payload.credit.card.brand,
             security_code: payload.credit.card.security_code,
             expiration_month: payload.credit.card.expiration_month,
             expiration_year: payload.credit.card.expiration_year,
