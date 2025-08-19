@@ -99,7 +99,8 @@ model Card {
 }
 
 model Pagamento {
-  id_pagamento         Int       @id @default(autoincrement())
+  id                   Int       @id @default(autoincrement())
+  id_pagamento         String?
   id_pedido            String
   amount               Int // Valor pago
   auth_code            String? // Código de autorização
@@ -108,7 +109,7 @@ model Pagamento {
   type                 String? // Tipo de pagamento
   host                 String? // Adquirente
   installments         Int? // Número de parcelas
-  installments_amount  Int?   // Valor por parcela
+  installments_amount  Int? // Valor por parcela
   authorization_date   DateTime? // Data de autorização
   capture_date         DateTime? // Data de captura
   reversed_amount      Int? // Valor estornado
