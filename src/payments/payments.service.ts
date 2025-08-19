@@ -322,36 +322,253 @@ export class PaymentsService {
     }
   }
 
-  /**
-   * Método para cancelar uma transação
-   * @param payment_id ID do pagamento
-   * @param amount Valor a ser cancelado (opcional)
-   */
-  async cancelPayment(payment_id: string, amount?: number) {
+  async cancelarPagamentoCompleto(id_pagamento: string, amount?: number) {
     const token = await this.getAccessToken();
 
+    // 1. Buscar o pagamento no banco para verificar existência
+    const pagamento = await this.prisma.pagamento.findFirst({
+      where: { id_pagamento: id_pagamento },
+    });
+
     try {
-      const payload = amount ? { amount } : {};
+      if (!pagamento) {
+        throw new Error('Pagamento não encontrado');
+      }
+
+      // 2. Fazer o cancelamento na Getnet usando id_pagamento
+      const cancelamentoData = {
+        cancel_amount: amount || pagamento.amount,
+        cancel_custom_key: `CANCEL-${Date.now()}`,
+      };
+
+      const httpsAgent = new https.Agent({
+        minVersion: 'TLSv1.2',
+        rejectUnauthorized: true,
+      });
+
+      // ✅ CORRETO - usar id_pagamento na URL da Getnet
       const response = await axios.post(
-        `${this.baseUrl}/v1/payments/credit/${payment_id}/cancel`,
-        payload,
+        `${this.baseUrl}/v1/payments/credit/${id_pagamento}/cancel`,
+        cancelamentoData,
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            seller_id: this.sellerId,
             'Content-Type': 'application/json',
           },
+          httpsAgent,
+          timeout: 10000,
         },
       );
 
-      return response.data;
+      const responseData = response.data;
+
+      // 3. Atualizar o status no banco
+      await this.prisma.pagamento.update({
+        where: { id: pagamento.id },
+        data: {
+          status: 'CANCELLED',
+          response_description: 'Pagamento cancelado com sucesso',
+          reversed_amount: cancelamentoData.cancel_amount,
+        },
+      });
+
+      return {
+        success: true,
+        cancel_id: responseData.cancel_id,
+        cancel_amount: responseData.cancel_amount,
+        status: responseData.status,
+      };
     } catch (error) {
       console.error(
         'Error canceling payment:',
         error.response?.data || error.message,
       );
-      throw new Error('Failed to cancel payment');
+
+      // 4. Registrar falha no cancelamento
+      if (pagamento) {
+        // ✅ Verificar se pagamento existe
+        await this.prisma.pagamento.update({
+          where: { id: pagamento.id },
+          data: {
+            status: 'CANCEL_FAILED',
+            response_description:
+              error.response?.data?.message || 'Falha no cancelamento',
+          },
+        });
+      }
+
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Erro ao cancelar pagamento',
+        details: error.response?.data,
+      };
     }
+  }
+
+  /**
+   * Estorna parcialmente um pagamento
+   */
+  // async estornarParcialmente(id_pagamento: string, amount: number) {
+  //   const token = await this.getAccessToken();
+
+  //   try {
+  //     // 1. Buscar o pagamento no banco
+  //     const pagamento = await this.prisma.pagamento.findFirst({
+  //       where: { id_pagamento },
+  //     });
+
+  //     if (!pagamento) {
+  //       throw new Error('Pagamento não encontrado');
+  //     }
+
+  //     if (amount > pagamento.amount) {
+  //       throw new Error('Valor de estorno maior que o valor do pagamento');
+  //     }
+
+  //     // 2. Fazer o estorno parcial na Getnet
+  //     const estornoData = {
+  //       cancel_amount: amount,
+  //       cancel_custom_key: `PARTIAL-REFUND-${Date.now()}`,
+  //     };
+
+  //     const httpsAgent = new https.Agent({
+  //       minVersion: 'TLSv1.2',
+  //       rejectUnauthorized: true,
+  //     });
+
+  //     const response = await axios.post(
+  //       `${this.baseUrl}/v1/payments/credit/${id_pagamento}/cancel`,
+  //       estornoData,
+  //       {
+  //         headers: {
+  //           Authorization: `Bearer ${token}`,
+  //           'Content-Type': 'application/json',
+  //         },
+  //         httpsAgent,
+  //         timeout: 10000,
+  //       },
+  //     );
+
+  //     const responseData = response.data;
+
+  //     // 3. Atualizar o status no banco
+  //     await this.prisma.pagamento.update({
+  //       where: { id: pagamento.id },
+  //       data: {
+  //         status:
+  //           amount === pagamento.amount ? 'CANCELLED' : 'PARTIALLY_REFUNDED',
+  //         response_description: `Estorno de ${amount} realizado com sucesso`,
+  //         reversed_amount: amount,
+  //       },
+  //     });
+
+  //     return {
+  //       success: true,
+  //       cancel_id: responseData.cancel_id,
+  //       cancel_amount: responseData.cancel_amount,
+  //       status: responseData.status,
+  //     };
+  //   } catch (error) {
+  //     console.error(
+  //       'Error processing refund:',
+  //       error.response?.data || error.message,
+  //     );
+
+  //     return {
+  //       success: false,
+  //       error: error.response?.data?.message || 'Erro ao processar estorno',
+  //       details: error.response?.data,
+  //     };
+  //   }
+  // }
+
+  /**
+   * Consulta status de um pagamento
+   */
+  async consultarStatusPagamento(id_pagamento: string) {
+    const token = await this.getAccessToken();
+
+    try {
+      const httpsAgent = new https.Agent({
+        minVersion: 'TLSv1.2',
+        rejectUnauthorized: true,
+      });
+
+      const response = await axios.get(
+        `${this.baseUrl}/v1/payments/credit/${id_pagamento}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          httpsAgent,
+          timeout: 10000,
+        },
+      );
+
+      return {
+        success: true,
+        status: response.data.status,
+        payment_data: response.data,
+      };
+    } catch (error) {
+      console.error(
+        'Error checking payment status:',
+        error.response?.data || error.message,
+      );
+
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Erro ao consultar status',
+        details: error.response?.data,
+      };
+    }
+  }
+
+  /**
+   * Busca pagamento por ID do pedido
+   */
+  async buscarPagamentoPorPedido(id_pedido: string) {
+    return this.prisma.pagamento.findMany({
+      where: { id_pedido },
+      select: {
+        id: true, // ID interno do seu banco (auto-increment)
+        id_pagamento: true, // ID da Getnet (antigo id_pagamento_getnet)
+        id_pedido: true, // Número do pedido
+        amount: true,
+        status: true,
+        auth_code: true,
+        response_description: true,
+        type: true,
+        host: true,
+        installments: true,
+        installments_amount: true,
+        authorization_date: true,
+        capture_date: true,
+        reversed_amount: true,
+        created_at: true,
+        updated_at: true,
+        // Incluir relações se necessário
+        Card: {
+          select: {
+            id_pedido: true,
+            categoria: true,
+            subcategoria: true,
+            valor: true,
+            status_pedido: true,
+            Prestador: {
+              select: {
+                id_prestador: true,
+                nome: true,
+                sobrenome: true,
+                foto: true,
+                especializacao: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
   }
 
   async criarPagamento(pagamentoData: {
@@ -392,5 +609,147 @@ export class PaymentsService {
       where: { id }, // Usa o ID interno (campo id)
       data,
     });
+  }
+
+  /**
+   * Busca todos os pagamentos de um cliente com informações completas
+   */
+  async buscarPagamentosPorCliente(id_cliente: number) {
+    return this.prisma.pagamento.findMany({
+      where: {
+        Card: {
+          id_cliente: id_cliente,
+        },
+      },
+      include: {
+        Card: {
+          include: {
+            Prestador: {
+              select: {
+                id_prestador: true,
+                nome: true,
+                sobrenome: true,
+                foto: true,
+                especializacao: true,
+              },
+            },
+            Cliente: {
+              select: {
+                id_cliente: true,
+                nome: true,
+                sobrenome: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        created_at: 'desc',
+      },
+    });
+  }
+
+  /**
+   * Busca pagamentos por cliente com paginação
+   */
+  async buscarPagamentosPorClientePaginado(
+    id_cliente: number,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    const skip = (page - 1) * limit;
+
+    const [pagamentos, total] = await Promise.all([
+      this.prisma.pagamento.findMany({
+        where: {
+          Card: {
+            id_cliente: id_cliente,
+          },
+        },
+        include: {
+          Card: {
+            include: {
+              Prestador: {
+                select: {
+                  id_prestador: true,
+                  nome: true,
+                  sobrenome: true,
+                  foto: true,
+                  especializacao: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          created_at: 'desc',
+        },
+        skip,
+        take: limit,
+      }),
+      this.prisma.pagamento.count({
+        where: {
+          Card: {
+            id_cliente: id_cliente,
+          },
+        },
+      }),
+    ]);
+
+    return {
+      pagamentos,
+      paginacao: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
+    };
+  }
+
+  /**
+   * Estatísticas de pagamentos do cliente
+   */
+  async estatisticasPagamentosCliente(id_cliente: number) {
+    const pagamentos = await this.prisma.pagamento.findMany({
+      where: {
+        Card: {
+          id_cliente: id_cliente,
+        },
+      },
+      select: {
+        amount: true,
+        status: true,
+        created_at: true,
+      },
+    });
+
+    const totalGasto = pagamentos
+      .filter((p) => p.status === 'APPROVED')
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+
+    const totalPagamentos = pagamentos.length;
+    const pagamentosAprovados = pagamentos.filter(
+      (p) => p.status === 'APPROVED',
+    ).length;
+    const pagamentosPendentes = pagamentos.filter(
+      (p) => p.status === 'PENDING',
+    ).length;
+    const pagamentosCancelados = pagamentos.filter(
+      (p) => p.status === 'CANCELLED',
+    ).length;
+
+    return {
+      totalGasto,
+      totalPagamentos,
+      pagamentosAprovados,
+      pagamentosPendentes,
+      pagamentosCancelados,
+      taxaAprovacao:
+        totalPagamentos > 0 ? (pagamentosAprovados / totalPagamentos) * 100 : 0,
+    };
   }
 }
