@@ -225,12 +225,12 @@ export class PaymentsService {
 
       // 6. Registrar pagamento com SUCESSO no banco
       pagamentoRegistrado = await this.criarPagamento({
-        id_pedido: payload.order.order_id, // Use order_id do payload
+        id_pagamento: responseData.payment_id, // ID da Getnet
+        id_pedido: payload.id_pedido,
         amount: payload.amount,
-        status: responseData.status || 'APPROVED', // Status da Getnet
+        status: responseData.status,
         auth_code: responseData.authorization_code,
-        response_description:
-          responseData.status_description || 'Pagamento aprovado',
+        response_description: responseData.status_description,
         installments: payload.credit.number_installments || 1,
         installments_amount:
           payload.amount / (payload.credit.number_installments || 1),
@@ -241,16 +241,16 @@ export class PaymentsService {
         host: 'GETNET',
       });
 
-      // 7. Retornar resposta de SUCESSO (sem estrutura de erro)
+      // 7. Retornar resposta de SUCESSO
       return {
         success: true,
-        payment_id: responseData.payment_id,
+        id: pagamentoRegistrado.id, // ID interno do seu banco
+        id_pagamento: responseData.payment_id, // ID da Getnet
+        id_pedido: payload.id_pedido, // Seu número de pedido
         authorization_code: responseData.authorization_code,
         status: responseData.status,
         status_description: responseData.status_description,
         amount: responseData.amount,
-        order_id: responseData.order?.order_id,
-        id_pagamento: pagamentoRegistrado.id_pagamento, // ID do registro no seu banco
       };
     } catch (error) {
       console.error(
@@ -265,6 +265,7 @@ export class PaymentsService {
 
       // 8. Registrar pagamento com ERRO no banco
       pagamentoRegistrado = await this.criarPagamento({
+        id_pagamento: errorDetails?.payment_id, // Pode ser null se não houver payment_id no erro
         id_pedido: payload.order.order_id,
         amount: payload.amount,
         status: errorStatus,
@@ -276,14 +277,15 @@ export class PaymentsService {
         host: 'GETNET',
       });
 
-      // 9. Retornar resposta de ERRO (estrutura diferente do sucesso)
+      // 9. Retornar resposta de ERRO
       return {
         success: false,
+        id: pagamentoRegistrado.id, // ID interno do seu banco
+        id_pagamento: errorDetails?.payment_id, // ID da Getnet (se disponível no erro)
+        id_pedido: payload.order.order_id,
         error: errorDescription,
         status: errorStatus,
         error_code: errorDetails?.error_code || 'UNKNOWN_ERROR',
-        payment_id: errorDetails?.payment_id,
-        id_pagamento: pagamentoRegistrado.id_pagamento,
         details: error.response?.data?.details,
       };
     }
@@ -353,6 +355,7 @@ export class PaymentsService {
   }
 
   async criarPagamento(pagamentoData: {
+    id_pagamento?: string;
     id_pedido: string;
     amount: number;
     auth_code?: string;
@@ -367,13 +370,26 @@ export class PaymentsService {
     reversed_amount?: number;
   }) {
     return this.prisma.pagamento.create({
-      data: pagamentoData,
+      data: {
+        id_pagamento: pagamentoData.id_pagamento,
+        id_pedido: pagamentoData.id_pedido,
+        amount: pagamentoData.amount,
+        auth_code: pagamentoData.auth_code,
+        status: pagamentoData.status,
+        response_description: pagamentoData.response_description,
+        type: pagamentoData.type,
+        host: pagamentoData.host,
+        installments: pagamentoData.installments,
+        installments_amount: pagamentoData.installments_amount,
+        authorization_date: pagamentoData.authorization_date,
+        capture_date: pagamentoData.capture_date,
+        reversed_amount: pagamentoData.reversed_amount,
+      },
     });
   }
-
-  async atualizarPagamento(id_pagamento: number, data: any) {
+  async atualizarPagamento(id: number, data: any) {
     return this.prisma.pagamento.update({
-      where: { id_pagamento },
+      where: { id }, // Usa o ID interno (campo id)
       data,
     });
   }
