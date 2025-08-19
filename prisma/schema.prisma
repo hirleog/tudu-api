@@ -95,6 +95,30 @@ model Card {
   Prestador                 Prestador?    @relation(fields: [id_prestador], references: [id_prestador])
   Candidatura               Candidatura[]
   imagens                   Imagem[]
+  pagamentos                Pagamento[]
+}
+
+model Pagamento {
+  id_pagamento         Int       @id @default(autoincrement())
+  id_pedido            String
+  amount               Int // Valor pago
+  auth_code            String? // Código de autorização
+  status               String // captured, denied, cancelled, pending, etc.
+  response_description String? // Descrição da resposta
+  type                 String? // Tipo de pagamento
+  host                 String? // Adquirente
+  installments         Int? // Número de parcelas
+  installments_amount  Int?   // Valor por parcela
+  authorization_date   DateTime? // Data de autorização
+  capture_date         DateTime? // Data de captura
+  reversed_amount      Int? // Valor estornado
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @default(now()) @updatedAt
+
+  // Relações
+  Card Card @relation(fields: [id_pedido], references: [id_pedido])
+
+  @@map("pagamentos")
 }
 
 model Imagem {

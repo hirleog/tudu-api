@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import * as qs from 'qs';
+import { PrismaService } from 'src/prisma/prisma.service';
 const https = require('https');
 const tls = require('tls');
 
@@ -15,7 +16,10 @@ export class PaymentsService {
   private readonly clientSecret: string;
   private readonly sellerId: string;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     const env = this.configService.get<string>('GETNET_ENV') || 'sandbox';
 
     this.baseUrl =
@@ -134,11 +138,12 @@ export class PaymentsService {
    */
   async processCreditCardPayment(payload: any) {
     const token = await this.getAccessToken();
+    let pagamentoRegistrado = null;
 
     try {
-      // 1. Tokenização do cartão (substitua pela sua lógica real)
+      // 1. Tokenização do cartão
       const number_token = await this.tokenizeCard(
-        payload.credit.card.number_token, // Número do cartão já sem formatação
+        payload.credit.card.number_token,
         payload.customer.customer_id,
       );
 
@@ -181,7 +186,6 @@ export class PaymentsService {
           dynamic_mcc: payload.credit.dynamic_mcc || 7299,
           card: {
             number_token: number_token,
-            // brand: payload.credit.card.brand,
             security_code: payload.credit.card.security_code,
             expiration_month: payload.credit.card.expiration_month,
             expiration_year: payload.credit.card.expiration_year,
@@ -192,7 +196,7 @@ export class PaymentsService {
 
       console.log('Request data:', JSON.stringify(requestData));
 
-      // 3. Validações adicionais
+      // 3. Validações
       if (!number_token) {
         throw new Error('Falha na tokenização do cartão');
       }
@@ -200,9 +204,10 @@ export class PaymentsService {
       // 4. Configuração HTTPS
       const httpsAgent = new https.Agent({
         minVersion: 'TLSv1.2',
-        rejectUnauthorized: true, // Importante para produção
+        rejectUnauthorized: true,
       });
 
+      // 5. Fazer a requisição para Getnet
       const response = await axios.post(
         `${this.baseUrl}/v1/payments/credit`,
         requestData,
@@ -215,19 +220,72 @@ export class PaymentsService {
           timeout: 10000,
         },
       );
-      return response.data;
+
+      const responseData = response.data;
+
+      // 6. Registrar pagamento com SUCESSO no banco
+      pagamentoRegistrado = await this.criarPagamento({
+        id_pedido: payload.order.order_id, // Use order_id do payload
+        amount: payload.amount,
+        status: responseData.status || 'APPROVED', // Status da Getnet
+        auth_code: responseData.authorization_code,
+        response_description:
+          responseData.status_description || 'Pagamento aprovado',
+        installments: payload.credit.number_installments || 1,
+        installments_amount:
+          payload.amount / (payload.credit.number_installments || 1),
+        authorization_date: responseData.authorized_at
+          ? new Date(responseData.authorized_at)
+          : new Date(),
+        type: 'CREDIT_CARD',
+        host: 'GETNET',
+      });
+
+      // 7. Retornar resposta de SUCESSO (sem estrutura de erro)
+      return {
+        success: true,
+        payment_id: responseData.payment_id,
+        authorization_code: responseData.authorization_code,
+        status: responseData.status,
+        status_description: responseData.status_description,
+        amount: responseData.amount,
+        order_id: responseData.order?.order_id,
+        id_pagamento: pagamentoRegistrado.id_pagamento, // ID do registro no seu banco
+      };
     } catch (error) {
       console.error(
         'Error processing payment:',
         error.response?.data || error.message,
-        console.log(
-          'Antifraud details:',
-          error.response?.data?.details?.[0]?.antifraud,
-        ),
       );
-      throw new Error(
-        error.response?.data?.message || 'Erro ao processar pagamento',
-      );
+
+      const errorDetails = error.response?.data?.details?.[0];
+      const errorStatus = errorDetails?.status || 'ERROR';
+      const errorDescription =
+        errorDetails?.description || 'Erro ao processar pagamento';
+
+      // 8. Registrar pagamento com ERRO no banco
+      pagamentoRegistrado = await this.criarPagamento({
+        id_pedido: payload.order.order_id,
+        amount: payload.amount,
+        status: errorStatus,
+        response_description: errorDescription,
+        installments: payload.credit.number_installments || 1,
+        installments_amount:
+          payload.amount / (payload.credit.number_installments || 1),
+        type: 'CREDIT_CARD',
+        host: 'GETNET',
+      });
+
+      // 9. Retornar resposta de ERRO (estrutura diferente do sucesso)
+      return {
+        success: false,
+        error: errorDescription,
+        status: errorStatus,
+        error_code: errorDetails?.error_code || 'UNKNOWN_ERROR',
+        payment_id: errorDetails?.payment_id,
+        id_pagamento: pagamentoRegistrado.id_pagamento,
+        details: error.response?.data?.details,
+      };
     }
   }
 
@@ -292,5 +350,31 @@ export class PaymentsService {
       );
       throw new Error('Failed to cancel payment');
     }
+  }
+
+  async criarPagamento(pagamentoData: {
+    id_pedido: string;
+    amount: number;
+    auth_code?: string;
+    status: string;
+    response_description?: string;
+    type?: string;
+    host?: string;
+    installments?: number;
+    installments_amount?: number;
+    authorization_date?: Date;
+    capture_date?: Date;
+    reversed_amount?: number;
+  }) {
+    return this.prisma.pagamento.create({
+      data: pagamentoData,
+    });
+  }
+
+  async atualizarPagamento(id_pagamento: number, data: any) {
+    return this.prisma.pagamento.update({
+      where: { id_pagamento },
+      data,
+    });
   }
 }
