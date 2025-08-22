@@ -121,7 +121,7 @@ export class PaymentsController {
     // 2. Fazer o cancelamento usando o id_pagamento_getnet (não o id_pedido)
     return this.paymentsService.cancelarPagamentoCompleto(
       pagamento.id_pagamento, // ✅ Correto - ID da Getnet
-      pagamento.amount,
+      pagamento.total_amount,
     );
   }
 

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import * as qs from 'qs';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { InstallmentsService } from '../installments/service/installments.service';
 const https = require('https');
 const tls = require('tls');
 
@@ -19,6 +20,7 @@ export class PaymentsService {
   constructor(
     private configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly installmentsService: InstallmentsService,
   ) {
     const env = this.configService.get<string>('GETNET_ENV') || 'sandbox';
 
@@ -141,6 +143,22 @@ export class PaymentsService {
     let pagamentoRegistrado = null;
 
     try {
+      // VALIDAÇÃO DAS PARCELAS - Verificar se os valores batem
+      if (payload.credit.number_installments > 1) {
+        const installmentValidation = await this.validateInstallmentValues(
+          payload.amount, // valor total que veio do frontend (em centavos)
+          payload.credit.number_installments,
+          payload.installment_data, // novo campo com dados da parcela
+        );
+
+        if (!installmentValidation.isValid) {
+          throw new Error('Dados de parcelamento inválidos ou inconsistentes');
+        }
+
+        // Usar o valor total calculado pelo sistema de parcelas
+        payload.amount = installmentValidation.calculatedTotal;
+      }
+
       // 1. Tokenização do cartão
       const number_token = await this.tokenizeCard(
         payload.credit.card.number_token,
@@ -150,10 +168,10 @@ export class PaymentsService {
       // 2. Montar o payload para a API de pagamentos
       const requestData = {
         seller_id: this.sellerId,
-        amount: payload.amount,
+        amount: payload.totalAmount, // Já validado e potencialmente ajustado
         currency: payload.currency || 'BRL',
         order: {
-          order_id: payload.order.order_id,
+          order_id: payload.id_pedido,
           product_type: payload.order.product_type || 'service',
         },
         customer: {
@@ -223,17 +241,17 @@ export class PaymentsService {
 
       const responseData = response.data;
 
-      // 6. Registrar pagamento com SUCESSO no banco
+      // 6. Registrar pagamento com SUCESSO no banco - COM DADOS DAS PARCELAS
       pagamentoRegistrado = await this.criarPagamento({
-        id_pagamento: responseData.payment_id, // ID da Getnet
+        id_pagamento: responseData.payment_id,
         id_pedido: payload.id_pedido,
-        amount: payload.amount,
+        total_amount: payload.totalAmount, // valor com juros
+        origin_amount: payload.originAmount, // valor sem juros
         status: responseData.status,
         auth_code: responseData.authorization_code,
         response_description: responseData.status_description,
         installments: payload.credit.number_installments || 1,
-        installments_amount:
-          payload.amount / (payload.credit.number_installments || 1),
+        installments_amount: payload.credit.amount_installment,
         authorization_date: responseData.authorized_at
           ? new Date(responseData.authorized_at)
           : new Date(),
@@ -244,13 +262,15 @@ export class PaymentsService {
       // 7. Retornar resposta de SUCESSO
       return {
         success: true,
-        id: pagamentoRegistrado.id, // ID interno do seu banco
-        id_pagamento: responseData.payment_id, // ID da Getnet
-        id_pedido: payload.id_pedido, // Seu número de pedido
+        id: pagamentoRegistrado.id,
+        id_pagamento: responseData.payment_id,
+        id_pedido: payload.id_pedido,
         authorization_code: responseData.authorization_code,
         status: responseData.status,
         status_description: responseData.status_description,
-        amount: responseData.amount,
+        total_amount: responseData.amount,
+        installments: payload.credit.number_installments,
+        installment_amount: payload.credit.amount_installment,
       };
     } catch (error) {
       console.error(
@@ -265,14 +285,14 @@ export class PaymentsService {
 
       // 8. Registrar pagamento com ERRO no banco
       pagamentoRegistrado = await this.criarPagamento({
-        id_pagamento: errorDetails?.payment_id, // Pode ser null se não houver payment_id no erro
-        id_pedido: payload.order.order_id,
-        amount: payload.amount,
+        id_pagamento: errorDetails?.payment_id,
+        id_pedido: payload.id_pedido,
+        total_amount: payload.totalAmount,
+        origin_amount: payload.originAmount,
         status: errorStatus,
         response_description: errorDescription,
         installments: payload.credit.number_installments || 1,
-        installments_amount:
-          payload.amount / (payload.credit.number_installments || 1),
+        installments_amount: payload.credit.amount_installment,
         type: 'CREDIT_CARD',
         host: 'GETNET',
       });
@@ -280,9 +300,9 @@ export class PaymentsService {
       // 9. Retornar resposta de ERRO
       return {
         success: false,
-        id: pagamentoRegistrado.id, // ID interno do seu banco
-        id_pagamento: errorDetails?.payment_id, // ID da Getnet (se disponível no erro)
-        id_pedido: payload.order.order_id,
+        id: pagamentoRegistrado.id,
+        id_pagamento: errorDetails?.payment_id,
+        id_pedido: payload.id_pedido,
         error: errorDescription,
         status: errorStatus,
         error_code: errorDetails?.error_code || 'UNKNOWN_ERROR',
@@ -291,6 +311,65 @@ export class PaymentsService {
     }
   }
 
+  // MÉTODO AUXILIAR PARA VALIDAR PARCELAS
+  private async validateInstallmentValues(
+    receivedTotal: number,
+    installments: number,
+    installmentData: any,
+  ): Promise<{ isValid: boolean; calculatedTotal: number }> {
+    try {
+      // Se não houver dados de parcela, calcular aqui
+      if (!installmentData) {
+        const calculation = this.installmentsService.calculateInstallments({
+          totalValue: receivedTotal,
+          maxInstallments: installments,
+        });
+
+        const option = calculation.options.find(
+          (opt) => opt.installments === installments,
+        );
+
+        return {
+          isValid: true,
+          calculatedTotal: option?.totalValue || receivedTotal,
+        };
+      }
+
+      // Validar dados recebidos do frontend
+      const expectedCalculation =
+        this.installmentsService.calculateInstallments({
+          totalValue: installmentData.original_value,
+          maxInstallments: installments,
+        });
+
+      const expectedOption = expectedCalculation.options.find(
+        (opt) => opt.installments === installments,
+      );
+
+      if (!expectedOption) {
+        return { isValid: false, calculatedTotal: receivedTotal };
+      }
+
+      // Validar com tolerância de 10 centavos
+      const totalValid =
+        Math.abs(expectedOption.totalValue - receivedTotal) < 10;
+      const installmentValid =
+        Math.abs(
+          expectedOption.installmentValue - installmentData.installment_value,
+        ) < 10;
+      const interestValid =
+        Math.abs(expectedOption.interestRate - installmentData.interest_rate) <
+        0.1;
+
+      return {
+        isValid: totalValid && installmentValid && interestValid,
+        calculatedTotal: expectedOption.totalValue,
+      };
+    } catch (error) {
+      console.error('Erro na validação de parcelas:', error);
+      return { isValid: false, calculatedTotal: receivedTotal };
+    }
+  }
   /**
    * Método para capturar uma pré-autorização
    * @param payment_id ID do pagamento
@@ -336,9 +415,10 @@ export class PaymentsService {
       }
 
       // 2. Fazer o cancelamento na Getnet usando id_pagamento
+      const cancel_amount = amount || pagamento.total_amount; // ✅ Definir o valor aqui
+
       const cancelamentoData = {
-        cancel_amount: amount || pagamento.amount,
-        cancel_custom_key: `CANCEL-${Date.now()}`,
+        reversed_amount: cancel_amount, // ✅ Campo CORRETO
       };
 
       const httpsAgent = new https.Agent({
@@ -346,9 +426,8 @@ export class PaymentsService {
         rejectUnauthorized: true,
       });
 
-      // ✅ CORRETO - usar id_pagamento na URL da Getnet
       const response = await axios.post(
-        `${this.baseUrl}/v1/payments/credit/${id_pagamento}/cancel`,
+        `${this.baseUrl}/v1/payments/credit/${'54d5d8ff-84e7-46b0-bc83-508a41338bbd'}/cancel`,
         cancelamentoData,
         {
           headers: {
@@ -367,8 +446,8 @@ export class PaymentsService {
         where: { id: pagamento.id },
         data: {
           status: 'CANCELLED',
+          reversed_amount: cancel_amount, // ✅ Usar a variável definida
           response_description: 'Pagamento cancelado com sucesso',
-          reversed_amount: cancelamentoData.cancel_amount,
         },
       });
 
@@ -385,17 +464,16 @@ export class PaymentsService {
       );
 
       // 4. Registrar falha no cancelamento
-      if (pagamento) {
-        // ✅ Verificar se pagamento existe
-        await this.prisma.pagamento.update({
-          where: { id: pagamento.id },
-          data: {
-            status: 'CANCEL_FAILED',
-            response_description:
-              error.response?.data?.message || 'Falha no cancelamento',
-          },
-        });
-      }
+      // if (pagamento) {
+      //   await this.prisma.pagamento.update({
+      //     where: { id: pagamento.id },
+      //     data: {
+      //       status: 'CANCEL_FAILED',
+      //       response_description:
+      //         error.response?.data?.message || 'Falha no cancelamento',
+      //     },
+      //   });
+      // }
 
       return {
         success: false,
@@ -534,7 +612,8 @@ export class PaymentsService {
         id: true, // ID interno do seu banco (auto-increment)
         id_pagamento: true, // ID da Getnet (antigo id_pagamento_getnet)
         id_pedido: true, // Número do pedido
-        amount: true,
+        total_amount: true,
+        origin_amount: true,
         status: true,
         auth_code: true,
         response_description: true,
@@ -574,7 +653,8 @@ export class PaymentsService {
   async criarPagamento(pagamentoData: {
     id_pagamento?: string;
     id_pedido: string;
-    amount: number;
+    total_amount: number;
+    origin_amount: number;
     auth_code?: string;
     status: string;
     response_description?: string;
@@ -590,7 +670,8 @@ export class PaymentsService {
       data: {
         id_pagamento: pagamentoData.id_pagamento,
         id_pedido: pagamentoData.id_pedido,
-        amount: pagamentoData.amount,
+        total_amount: pagamentoData.total_amount,
+        origin_amount: pagamentoData.origin_amount,
         auth_code: pagamentoData.auth_code,
         status: pagamentoData.status,
         response_description: pagamentoData.response_description,
@@ -721,7 +802,7 @@ export class PaymentsService {
         },
       },
       select: {
-        amount: true,
+        total_amount: true,
         status: true,
         created_at: true,
       },
@@ -729,7 +810,7 @@ export class PaymentsService {
 
     const totalGasto = pagamentos
       .filter((p) => p.status === 'APPROVED')
-      .reduce((sum, p) => sum + Number(p.amount), 0);
+      .reduce((sum, p) => sum + Number(p.total_amount), 0);
 
     const totalPagamentos = pagamentos.length;
     const pagamentosAprovados = pagamentos.filter(

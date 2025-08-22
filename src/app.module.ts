@@ -1,3 +1,5 @@
+import { InstallmentsModule } from './getnet/installments/installments.module';
+import { InstallmentsController } from './getnet/installments/controller/installments.controller';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -9,12 +11,13 @@ import { ClienteModule } from './cliente/cliente.module';
 import { EventsGateway } from './events/events.gateway';
 import { GeolocationModule } from './geolocation/geolocation.module';
 import { ImagemModule } from './imagem/imagem.module';
+import { PaymentsModule } from './getnet/payments/payments.module';
+import { PaymentsService } from './getnet/payments/payments.service';
 import { PrismaModule } from './prisma/prisma.module';
-import { PaymentsService } from './payments/payments.service';
-import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
+        InstallmentsModule, 
     CardsModule,
     ClienteModule,
     PrestadorModule,
@@ -31,7 +34,8 @@ import { PaymentsModule } from './payments/payments.module';
 
     PaymentsModule,
   ],
-  controllers: [AppController],
+  controllers: [
+        InstallmentsController, AppController],
   providers: [AppService, EventsGateway, PaymentsService],
 })
 export class AppModule {}
