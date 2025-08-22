@@ -417,9 +417,9 @@ export class PaymentsService {
       // 2. Fazer o cancelamento na Getnet usando id_pagamento
       const cancel_amount = amount || pagamento.total_amount; // ✅ Definir o valor aqui
 
-      const cancelamentoData = {
-        reversed_amount: cancel_amount, // ✅ Campo CORRETO
-      };
+      // const cancelamentoData = {
+      //   reversed_amount: cancel_amount, // ✅ Campo CORRETO
+      // };
 
       const httpsAgent = new https.Agent({
         minVersion: 'TLSv1.2',
@@ -427,8 +427,10 @@ export class PaymentsService {
       });
 
       const response = await axios.post(
-        `${this.baseUrl}/v1/payments/credit/${'54d5d8ff-84e7-46b0-bc83-508a41338bbd'}/cancel`,
-        cancelamentoData,
+        `${this.baseUrl}/v1/payments/credit/${pagamento.id_pagamento}/cancel`,
+        {
+          cancel_amount: cancel_amount,
+        },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -440,6 +442,8 @@ export class PaymentsService {
       );
 
       const responseData = response.data;
+      console.log('======== RESPONSE ===========');
+      console.log(responseData);
 
       // 3. Atualizar o status no banco
       await this.prisma.pagamento.update({
