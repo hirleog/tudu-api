@@ -102,7 +102,8 @@ model Pagamento {
   id                   Int       @id @default(autoincrement())
   id_pagamento         String?
   id_pedido            String
-  amount               Int // Valor pago
+  total_amount         Int // Valor pago
+  origin_amount         Int // Valor pago
   auth_code            String? // Código de autorização
   status               String // captured, denied, cancelled, pending, etc.
   response_description String? // Descrição da resposta
