@@ -249,7 +249,7 @@ export class PaymentsService {
         origin_amount: payload.originAmount, // valor sem juros
         status: responseData.status,
         auth_code: responseData.authorization_code,
-        response_description: responseData.status_description,
+        response_description: 'Pagamento realizado com sucesso',
         installments: payload.credit.number_installments || 1,
         installments_amount: payload.credit.amount_installment,
         authorization_date: responseData.authorized_at
@@ -409,7 +409,7 @@ export class PaymentsService {
       where: { id_pagamento: id_pagamento },
     });
 
-    try {
+  try {
       if (!pagamento) {
         throw new Error('Pagamento não encontrado');
       }

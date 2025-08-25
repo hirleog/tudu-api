@@ -82,6 +82,7 @@ model Card {
   codigo_confirmacao        String?
   data_finalizacao          DateTime?
   status_pedido             String
+  cancellation_reason       String?
   cep                       String
   street                    String
   neighborhood              String
@@ -103,7 +104,7 @@ model Pagamento {
   id_pagamento         String?
   id_pedido            String
   total_amount         Int // Valor pago
-  origin_amount         Int // Valor pago
+  origin_amount        Int // Valor pago
   auth_code            String? // Código de autorização
   status               String // captured, denied, cancelled, pending, etc.
   response_description String? // Descrição da resposta
