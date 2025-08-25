@@ -326,6 +326,7 @@ export class CardsService {
 
       categoria: card.categoria,
       subcategoria: card.subcategoria,
+      serviceDescription: card.serviceDescription,
       valor: card.valor,
       horario_preferencial: card.horario_preferencial,
       codigo_confirmacao: card.codigo_confirmacao || null,
