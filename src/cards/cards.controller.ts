@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   InternalServerErrorException,
   Param,
@@ -9,6 +10,7 @@ import {
   Put,
   Query,
   Req,
+  Request,
   UploadedFiles,
   UseGuards,
 } from '@nestjs/common';
@@ -24,6 +26,7 @@ import * as multer from 'multer';
 import * as sharp from 'sharp';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { Card } from './entities/showcase-card.entity';
+import { CancelCardDto } from './dto/cancel-card.dto';
 
 @Controller('cards')
 export class CardsController {
@@ -232,5 +235,18 @@ export class CardsController {
       console.error('Error in /list/showcase endpoint:', error);
       throw new InternalServerErrorException('Failed to load showcase cards');
     }
+  }
+
+  @UseGuards(MultiRoleAuthGuard)
+  @Delete(':id/cancel')
+  async cancel(
+    @Param('id') id_pedido: string,
+    @Body() cancelCardDto: CancelCardDto,
+    @Request() req,
+  ) {
+    return this.cardsService.cancel(id_pedido, cancelCardDto, {
+      id_cliente: req.user.sub,
+      role: req.user.role,
+    });
   }
 }
