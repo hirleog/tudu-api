@@ -79,7 +79,13 @@ export class CardsService {
     categoria?: string,
   ): Promise<{
     cards: any[];
-    counts: { publicado: number; andamento: number; finalizado: number };
+    counts: {
+      publicado: number;
+      andamento: number;
+      finalizado: number;
+      cancelado: number;
+      pendente: number;
+    };
   }> {
     const { telefone, cpf, email, id_prestador } = prestadorInfo || {};
     const { id_cliente } = clienteInfo || {};
@@ -170,6 +176,21 @@ export class CardsService {
 
         return card.Candidatura.some((c) => c.prestador_id === prestadorId);
       }).length,
+
+      cancelado: allCards.filter((card) => {
+        if (card.status_pedido !== 'cancelado') return false;
+
+        if (id_cliente && card.id_cliente === id_cliente) return true;
+
+        return card.Candidatura.some((c) => c.prestador_id === prestadorId);
+      }).length,
+      pendente: allCards.filter((card) => {
+        if (card.status_pedido !== 'pendente') return false;
+
+        if (id_cliente && card.id_cliente === id_cliente) return true;
+
+        return card.Candidatura.some((c) => c.prestador_id === prestadorId);
+      }).length,
     };
 
     const cardsFiltrados = allCards.filter((card) => {
@@ -202,6 +223,14 @@ export class CardsService {
 
       if (status_pedido === 'pendente') {
         return card.status_pedido === 'pendente';
+      }
+
+      if (status_pedido === 'cancelado') {
+        const canceladoComCandidatura =
+          card.status_pedido === 'cancelado' &&
+          card.Candidatura.some((c) => c.prestador_id === prestadorId);
+
+        return canceladoComCandidatura;
       }
 
       return true;
