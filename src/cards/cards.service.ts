@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateCardDto } from './dto/create-card.dto';
 import { card } from './entities/card.entity';
@@ -6,6 +10,7 @@ import { UpdateCardDto } from './dto/update-card.dto';
 import { customAlphabet } from 'nanoid';
 import { EventsGateway } from 'src/events/events.gateway';
 import { Card } from './entities/showcase-card.entity';
+import { CancelCardDto } from './dto/cancel-card.dto';
 @Injectable()
 export class CardsService {
   private cards: card[] = []; // Simulação de banco de dados em memória
@@ -457,6 +462,74 @@ export class CardsService {
     });
   }
 
+  async cancel(
+    id_pedido: string,
+    cancelCardDto: CancelCardDto,
+    userInfo: { id_cliente?: number; role?: string },
+  ) {
+    const { id_cliente, role } = userInfo;
+
+    // Buscar o card
+    const card = await this.prisma.card.findUnique({
+      where: { id_pedido },
+      include: { Candidatura: true },
+    });
+
+    if (!card) {
+      throw new NotFoundException(`Card com ID ${id_pedido} não encontrado`);
+    }
+
+    // Verificar permissões
+    const isOwner = card.id_cliente === id_cliente;
+    // const isAdmin = role === 'admin';
+
+    if (!isOwner) {
+      throw new ForbiddenException(
+        'Você não tem permissão para cancelar este pedido',
+      );
+    }
+
+    // Verificar se já está cancelado
+    if (card.status_pedido === 'cancelado') {
+      throw new ForbiddenException('Este pedido já está cancelado');
+    }
+
+    // Verificar se pode ser cancelado (não finalizado)
+    if (card.status_pedido === 'finalizado') {
+      throw new ForbiddenException(
+        'Pedidos finalizados não podem ser cancelados',
+      );
+    }
+
+    // Realizar o cancelamento lógico
+    const updatedCard = await this.prisma.card.update({
+      where: { id_pedido },
+      data: {
+        status_pedido: 'cancelado',
+        cancellation_reason:
+          cancelCardDto.cancellation_reason || 'Cancelado pelo usuário',
+        updatedAt: new Date(),
+      },
+      include: {
+        Candidatura: true,
+        imagens: true,
+      },
+    });
+
+    // Notificar via WebSocket
+    await this.eventsGateway.notificarAtualizacao(updatedCard);
+    this.eventsGateway.notifyClientStatusChange(
+      updatedCard.id_pedido,
+      updatedCard.status_pedido,
+    );
+
+    return {
+      status: 'success',
+      message: 'Pedido cancelado com sucesso',
+      card: updatedCard,
+    };
+  }
+
   adjustTimezone(date: Date): Date {
     const adjustedDate = new Date(date);
     // Ajuste de -3 horas para UTC-3 (Brasília)
@@ -524,50 +597,41 @@ export class CardsService {
   async getServiceCardsWithDisabled(
     clientId: number,
   ): Promise<{ cards: Card[]; counts: any }> {
-    let processedCards = [];
-    let activeCategories = [];
-
     try {
-      // 1. Buscar cards do cliente que NÃO estão finalizados
+      let activeCategories: string[] = [];
+
+      // 1. Buscar apenas categorias ativas (não finalizadas nem canceladas)
       if (clientId !== undefined) {
-        const clientCards = await this.prisma.card.findMany({
+        const activeCards = await this.prisma.card.findMany({
           where: {
             id_cliente: clientId,
-            NOT: {
-              status_pedido: 'finalizado',
+            status_pedido: {
+              notIn: ['finalizado', 'cancelado'], // ← FILTRO OTIMIZADO
             },
           },
           select: {
             categoria: true,
-            status_pedido: true,
           },
+          distinct: ['categoria'], // ← EVITA DUPLICATAS
         });
 
-        // 2. Extrair categorias únicas dos cards ativos do cliente
-        activeCategories = [
-          ...new Set(
-            clientCards
-              .filter((card) => card.status_pedido !== 'finalizado')
-              .map((card) => card.categoria),
-          ),
-        ];
-
-        // 3. Processar os cards do showcase
-        processedCards = this.showcaseCards.map((card) => {
-          const isDisabled = activeCategories.includes(card.cardDetail.label);
-          return {
-            ...card,
-            disabled: isDisabled,
-          };
-        });
+        activeCategories = activeCards.map((card) => card.categoria);
       }
+
+      // 2. Processar os cards do showcase
+      const processedCards = this.showcaseCards.map((card) => {
+        const isDisabled = activeCategories.includes(card.cardDetail.label);
+        return {
+          ...card,
+          disabled: isDisabled,
+        };
+      });
 
       return {
         cards: clientId !== undefined ? processedCards : this.showcaseCards,
         counts: {
           total: processedCards.length,
           disabled: activeCategories.length,
-          // activeCards: clientCards.length,
         },
       };
     } catch (error) {
