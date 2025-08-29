@@ -48,7 +48,7 @@ model Prestador {
   avaliacao              String?
   created_at             DateTime      @default(now())
   updated_at             DateTime      @default(now()) @updatedAt
-  foto                   String?       @db.LongText
+  foto                   String?
   numero_servicos_feitos Int?
   Candidatura            Candidatura[]
   Card                   Card[]

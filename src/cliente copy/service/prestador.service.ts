@@ -68,10 +68,17 @@ export class PrestadorService {
     });
   }
 
-  async update(id: number, dto: UpdatePrestadorDto) {
+  async update(id: number, dto: UpdatePrestadorDto, fotoUrl?: string) {
+    const updateData: any = { ...dto };
+
+    // Se uma fotoUrl foi fornecida, adiciona ao objeto de atualização
+    if (fotoUrl !== undefined) {
+      updateData.foto = fotoUrl;
+    }
+
     return this.prisma.prestador.update({
       where: { id_prestador: id },
-      data: dto,
+      data: updateData,
     });
   }
 }

@@ -67,7 +67,7 @@ export class CardsController {
         .webp({ quality: 80 })
         .toBuffer();
 
-      const uploadResult = await this.cloudinaryService.uploadImage(
+      const uploadResult = await this.cloudinaryService.uploadCardAssets(
         webpBuffer,
         file.originalname,
       );

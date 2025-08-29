@@ -14,11 +14,29 @@ export class CloudinaryService {
     });
   }
 
-  uploadImage(buffer: Buffer, filename: string): Promise<UploadApiResponse> {
+  uploadCardAssets(buffer: Buffer, filename: string): Promise<UploadApiResponse> {
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
-          folder: 'cards', // opcional: cria uma pasta "cards"
+          folder: 'cards-assets', // opcional: cria uma pasta "cards"
+          public_id: filename.replace(/\.[^/.]+$/, ''), // tira a extensão
+          resource_type: 'image',
+          format: 'webp',
+        },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result);
+        },
+      );
+
+      Readable.from(buffer).pipe(uploadStream);
+    });
+  }
+  uploadProfilePrestadorImg(buffer: Buffer, filename: string): Promise<UploadApiResponse> {
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'prestadores-assets', // opcional: cria uma pasta "prestadores"
           public_id: filename.replace(/\.[^/.]+$/, ''), // tira a extensão
           resource_type: 'image',
           format: 'webp',
