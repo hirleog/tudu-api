@@ -55,10 +55,24 @@ export class ClienteService {
     });
   }
 
-  async update(id: number, dto: UpdateClienteDto) {
+  // async update(id: number, dto: UpdateClienteDto) {
+  //   return this.prisma.cliente.update({
+  //     where: { id_cliente: id },
+  //     data: dto,
+  //   });
+  // }
+
+  async update(id: number, dto: UpdateClienteDto, fotoUrl?: string) {
+    const updateData: any = { ...dto };
+
+    // Se uma fotoUrl foi fornecida, adiciona ao objeto de atualização
+    if (fotoUrl !== undefined) {
+      updateData.foto = fotoUrl;
+    }
+
     return this.prisma.cliente.update({
       where: { id_cliente: id },
-      data: dto,
+      data: updateData,
     });
   }
 
