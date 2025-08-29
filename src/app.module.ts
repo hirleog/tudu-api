@@ -14,6 +14,7 @@ import { ImagemModule } from './imagem/imagem.module';
 import { PaymentsModule } from './getnet/payments/payments.module';
 import { PaymentsService } from './getnet/payments/payments.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { ExperienciaModule } from './experience/experience.module';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PrestadorModule,
     PrismaModule,
     AuthModule,
-
+    ExperienciaModule,
     ConfigModule.forRoot({
       isGlobal: true, // para estar disponível em toda a aplicação
     }),

@@ -23,6 +23,7 @@ model Cliente {
   endereco_bairro String?
   endereco_rua    String?
   endereco_numero String?
+  avaliacao       String?
   created_at      DateTime @default(now())
   updated_at      DateTime @default(now()) @updatedAt
   foto            String?
@@ -30,13 +31,13 @@ model Cliente {
 }
 
 model Prestador {
-  id_prestador           Int           @id @default(autoincrement())
+  id_prestador           Int            @id @default(autoincrement())
   telefone               String?
   nome                   String
   sobrenome              String
-  cpf                    String?       @unique
+  cpf                    String?        @unique
   data_nascimento        String?
-  email                  String        @unique
+  email                  String         @unique
   password               String
   endereco_estado        String?
   endereco_cidade        String?
@@ -46,12 +47,49 @@ model Prestador {
   especializacao         String?
   descricao              String?
   avaliacao              String?
-  created_at             DateTime      @default(now())
-  updated_at             DateTime      @default(now()) @updatedAt
+  created_at             DateTime       @default(now())
+  updated_at             DateTime       @default(now()) @updatedAt
   foto                   String?
   numero_servicos_feitos Int?
   Candidatura            Candidatura[]
   Card                   Card[]
+  Experiencias           Experiencia[]  @relation("PrestadorExperiencias")
+  Certificacoes          Certificacao[] @relation("PrestadorCertificacoes")
+}
+
+// NOVA TABELA: Experiência Profissional
+model Experiencia {
+  id           Int      @id @default(autoincrement())
+  titulo       String
+  descricao    String?
+  empresa      String?
+  data_inicio  String? // "2020-01" ou "2020"
+  data_fim     String? // "2022-12" ou "2022" ou "Atual"
+  tipo         String? // "emprego", "freelance", "projeto"
+  prestador_id Int
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now()) @updatedAt
+
+  Prestador Prestador           @relation("PrestadorExperiencias", fields: [prestador_id], references: [id_prestador], onDelete: Cascade)
+  imagens   ImagemExperiencia[]
+}
+
+// NOVA TABELA: Certificações
+model Certificacao {
+  id            Int                  @id @default(autoincrement())
+  titulo        String
+  descricao     String?
+  instituicao   String
+  data_emissao  String? // "2023-05-15" ou "05/2023"
+  data_validade String? // "2025-05-15" ou "05/2025"
+  codigo        String? // Código da certificação
+  url           String? // Link para verificar a certificação
+  prestador_id  Int
+  Imagens       ImagemCertificacao[]
+  created_at    DateTime             @default(now())
+  updated_at    DateTime             @default(now()) @updatedAt
+
+  Prestador Prestador @relation("PrestadorCertificacoes", fields: [prestador_id], references: [id_prestador], onDelete: Cascade)
 }
 
 model Candidatura {
@@ -132,4 +170,24 @@ model Imagem {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
   card      Card     @relation(fields: [cardId], references: [id_pedido])
+}
+
+// Imagens para Experiencia
+model ImagemExperiencia {
+  id            Int         @id @default(autoincrement())
+  url           String
+  experienciaId Int
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @default(now()) @updatedAt
+  experiencia   Experiencia @relation(fields: [experienciaId], references: [id])
+}
+
+// Imagens para Certificacao
+model ImagemCertificacao {
+  id              Int          @id @default(autoincrement())
+  url             String
+  certificacao_id Int
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @default(now()) @updatedAt
+  Certificacao    Certificacao @relation(fields: [certificacao_id], references: [id])
 }
