@@ -18,6 +18,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import * as sharp from 'sharp';
 
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
+import { ChangePasswordDto } from '../dto/change-password.dto';
 
 @Controller('prestadores')
 export class PrestadorController {
@@ -34,6 +35,23 @@ export class PrestadorController {
   @Post()
   async createPrestador(@Body() createPrestadorDto: CreatePrestadorDto) {
     return this.prestadorService.createPrestador(createPrestadorDto);
+  }
+
+  // Novo endpoint para alteração de senha
+  @Patch(':id/change-password')
+  async changePassword(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() changePasswordDto: ChangePasswordDto,
+  ) {
+    try {
+      const result = await this.prestadorService.changePassword(
+        id,
+        changePasswordDto,
+      );
+      return { message: 'Senha alterada com sucesso' };
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
   }
 
   @Patch(':id')

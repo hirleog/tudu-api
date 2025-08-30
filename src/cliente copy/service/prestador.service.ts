@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreatePrestadorDto } from '../dto/create-prestador.dto';
 import { UpdatePrestadorDto } from '../dto/update-prestador.dto';
+import { ChangePasswordDto } from '../dto/change-password.dto';
 
 @Injectable()
 export class PrestadorService {
@@ -60,6 +61,37 @@ export class PrestadorService {
     });
 
     return payload;
+  }
+
+  async changePassword(id: number, changePasswordDto: ChangePasswordDto) {
+    // Verificar se as novas senhas coincidem
+    if (
+      changePasswordDto.newPassword !== changePasswordDto.confirmNewPassword
+    ) {
+      throw new BadRequestException('As novas senhas não coincidem');
+    }
+
+    // Buscar o prestador
+    const prestador = await this.getById(id);
+    if (!prestador) {
+      throw new NotFoundException('Prestador não encontrado');
+    }
+
+    // Verificar a senha atual
+    const isCurrentPasswordValid = await bcrypt.compare(
+      changePasswordDto.currentPassword,
+      prestador.password,
+    );
+
+    if (!isCurrentPasswordValid) {
+      throw new BadRequestException('Senha atual incorreta');
+    }
+
+    // Criptografar a nova senha
+    const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
+
+    // Atualizar a senha
+    // return this.prestadorRepository.update(id, { password: hashedPassword });
   }
 
   async getById(id: number) {

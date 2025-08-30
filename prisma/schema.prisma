@@ -45,7 +45,7 @@ model Prestador {
   endereco_rua           String?
   endereco_numero        String?
   especializacao         String?
-  descricao              String?
+  descricao              String?        @db.Text
   avaliacao              String?
   created_at             DateTime       @default(now())
   updated_at             DateTime       @default(now()) @updatedAt

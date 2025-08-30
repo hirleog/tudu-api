@@ -68,6 +68,7 @@ export class CreatePrestadorDto {
 
   @IsOptional()
   @IsString()
+  @Length(10, 500)
   descricao?: string;
 
   @IsOptional()
