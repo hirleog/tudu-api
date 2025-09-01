@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreatePrestadorDto } from '../dto/create-prestador.dto';
@@ -25,7 +30,7 @@ export class PrestadorService {
     });
 
     if (existingEmail) {
-      throw new Error('O email já está em uso.');
+      throw new ConflictException('O email já está em uso.');
     }
 
     // Verifica se o CPF já existe
@@ -35,7 +40,7 @@ export class PrestadorService {
       });
 
       if (existingCpf) {
-        throw new Error('O CPF já está em uso.');
+        throw new ConflictException('O CPF já está em uso.');
       }
     }
 
