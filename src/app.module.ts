@@ -1,24 +1,26 @@
-import { InstallmentsModule } from './getnet/installments/installments.module';
-import { InstallmentsController } from './getnet/installments/controller/installments.controller';
+import { EmailService } from './email/email.service';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { CardsModule } from './cards/cards.module';
-import { PrestadorModule } from './cliente copy/prestador.module';
 import { ClienteModule } from './cliente/cliente.module';
+import { VerificationService } from './email/verification.service';
 import { EventsGateway } from './events/events.gateway';
+import { ExperienciaModule } from './experience/experience.module';
 import { GeolocationModule } from './geolocation/geolocation.module';
-import { ImagemModule } from './imagem/imagem.module';
+import { InstallmentsController } from './getnet/installments/controller/installments.controller';
+import { InstallmentsModule } from './getnet/installments/installments.module';
 import { PaymentsModule } from './getnet/payments/payments.module';
 import { PaymentsService } from './getnet/payments/payments.service';
+import { ImagemModule } from './imagem/imagem.module';
+import { PrestadorModule } from './prestador/prestador.module';
 import { PrismaModule } from './prisma/prisma.module';
-import { ExperienciaModule } from './experience/experience.module';
 
 @Module({
   imports: [
-        InstallmentsModule, 
+    InstallmentsModule,
     CardsModule,
     ClienteModule,
     PrestadorModule,
@@ -35,8 +37,8 @@ import { ExperienciaModule } from './experience/experience.module';
 
     PaymentsModule,
   ],
-  controllers: [
-        InstallmentsController, AppController],
-  providers: [AppService, EventsGateway, PaymentsService],
+  controllers: [InstallmentsController, AppController],
+  providers: [
+        EmailService, VerificationService, AppService, EventsGateway, PaymentsService],
 })
 export class AppModule {}
