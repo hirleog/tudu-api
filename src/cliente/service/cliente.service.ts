@@ -3,16 +3,18 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateClienteDto } from '../dto/create-cliente.dto';
 import { UpdateClienteDto } from '../dto/update-client.dto';
+import { normalizeStrings } from 'src/utils/utils';
 
 @Injectable()
 export class ClienteService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createCliente(createClienteDto: CreateClienteDto) {
+    const toLowerCaseDto = normalizeStrings(createClienteDto);
     const hashedPassword = await bcrypt.hash(createClienteDto.password, 10);
 
     const existingEmail = await this.prisma.cliente.findUnique({
-      where: { email: createClienteDto.email },
+      where: { email: toLowerCaseDto.email },
     });
 
     if (existingEmail) {
@@ -31,18 +33,18 @@ export class ClienteService {
 
     const payload = await this.prisma.cliente.create({
       data: {
-        telefone: createClienteDto.telefone,
-        nome: createClienteDto.nome,
-        sobrenome: createClienteDto.sobrenome,
-        cpf: createClienteDto.cpf,
-        data_nascimento: createClienteDto.data_nascimento,
-        email: createClienteDto.email,
+        telefone: toLowerCaseDto.telefone,
+        nome: toLowerCaseDto.nome,
+        sobrenome: toLowerCaseDto.sobrenome,
+        cpf: toLowerCaseDto.cpf,
+        data_nascimento: toLowerCaseDto.data_nascimento,
+        email: toLowerCaseDto.email,
         password: hashedPassword,
-        endereco_estado: createClienteDto.endereco_estado,
-        endereco_cidade: createClienteDto.endereco_cidade,
-        endereco_bairro: createClienteDto.endereco_bairro,
-        endereco_rua: createClienteDto.endereco_rua,
-        endereco_numero: createClienteDto.endereco_numero,
+        endereco_estado: toLowerCaseDto.endereco_estado,
+        endereco_cidade: toLowerCaseDto.endereco_cidade,
+        endereco_bairro: toLowerCaseDto.endereco_bairro,
+        endereco_rua: toLowerCaseDto.endereco_rua,
+        endereco_numero: toLowerCaseDto.endereco_numero,
       },
     });
 
@@ -63,7 +65,7 @@ export class ClienteService {
   // }
 
   async update(id: number, dto: UpdateClienteDto, fotoUrl?: string) {
-    const updateData: any = { ...dto };
+    const updateData: any = normalizeStrings(dto, ['password']);
 
     // Se uma fotoUrl foi fornecida, adiciona ao objeto de atualização
     if (fotoUrl !== undefined) {

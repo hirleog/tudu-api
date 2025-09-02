@@ -9,17 +9,19 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreatePrestadorDto } from '../dto/create-prestador.dto';
 import { UpdatePrestadorDto } from '../dto/update-prestador.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
+import { normalizeStrings } from 'src/utils/utils';
 
 @Injectable()
 export class PrestadorService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createPrestador(createPrestadorDto: CreatePrestadorDto) {
+    const toLowerCaseDto = normalizeStrings(createPrestadorDto, ['password']);
     const hashedPassword = await bcrypt.hash(createPrestadorDto.password, 10);
 
     // Verifica se o email já existe
     const data = Object.fromEntries(
-      Object.entries(createPrestadorDto).filter(
+      Object.entries(toLowerCaseDto).filter(
         ([_, value]) => value !== undefined,
       ),
     );
@@ -47,21 +49,21 @@ export class PrestadorService {
     // Cria o registro na tabela Prestador
     const payload = await this.prisma.prestador.create({
       data: {
-        telefone: createPrestadorDto.telefone,
-        nome: createPrestadorDto.nome,
-        sobrenome: createPrestadorDto.sobrenome,
-        cpf: createPrestadorDto.cpf,
-        data_nascimento: createPrestadorDto.data_nascimento,
-        email: createPrestadorDto.email,
+        telefone: toLowerCaseDto.telefone,
+        nome: toLowerCaseDto.nome,
+        sobrenome: toLowerCaseDto.sobrenome,
+        cpf: toLowerCaseDto.cpf,
+        data_nascimento: toLowerCaseDto.data_nascimento,
+        email: toLowerCaseDto.email,
         password: hashedPassword,
-        endereco_estado: createPrestadorDto.endereco_estado,
-        endereco_cidade: createPrestadorDto.endereco_cidade,
-        endereco_bairro: createPrestadorDto.endereco_bairro,
-        endereco_rua: createPrestadorDto.endereco_rua,
-        endereco_numero: createPrestadorDto.endereco_numero,
-        especializacao: createPrestadorDto.especializacao,
-        descricao: createPrestadorDto.descricao,
-        avaliacao: createPrestadorDto.avaliacao,
+        endereco_estado: toLowerCaseDto.endereco_estado,
+        endereco_cidade: toLowerCaseDto.endereco_cidade,
+        endereco_bairro: toLowerCaseDto.endereco_bairro,
+        endereco_rua: toLowerCaseDto.endereco_rua,
+        endereco_numero: toLowerCaseDto.endereco_numero,
+        especializacao: toLowerCaseDto.especializacao,
+        descricao: toLowerCaseDto.descricao,
+        avaliacao: toLowerCaseDto.avaliacao,
       },
     });
 
@@ -96,7 +98,10 @@ export class PrestadorService {
     const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
 
     // Atualizar a senha
-    // return this.prestadorRepository.update(id, { password: hashedPassword });
+    return this.prisma.prestador.update({
+      where: { id_prestador: id },
+      data: { password: hashedPassword },
+    });
   }
 
   async getById(id: number) {
@@ -106,7 +111,7 @@ export class PrestadorService {
   }
 
   async update(id: number, dto: UpdatePrestadorDto, fotoUrl?: string) {
-    const updateData: any = { ...dto };
+    const updateData: any = normalizeStrings(dto, ['password']);
 
     // Se uma fotoUrl foi fornecida, adiciona ao objeto de atualização
     if (fotoUrl !== undefined) {
