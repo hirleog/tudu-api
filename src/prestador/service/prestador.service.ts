@@ -1,53 +1,64 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { CreateClienteDto } from '../dto/create-cliente.dto';
-import { UpdateClienteDto } from '../dto/update-client.dto';
-import { normalizeStrings } from 'src/utils/utils';
+import { CreatePrestadorDto } from '../dto/create-prestador.dto';
+import { UpdatePrestadorDto } from '../dto/update-prestador.dto';
 import {
   ChangePasswordDto,
   RequestPasswordResetDto,
   VerifyResetCodeDto,
-} from 'src/prestador/dto/change-password.dto';
+} from '../dto/change-password.dto';
+import { normalizeStrings } from 'src/utils/utils';
 import { EmailService } from 'src/email/email.service';
 import { VerificationService } from 'src/email/verification.service';
 
 @Injectable()
-export class ClienteService {
+export class PrestadorService {
   constructor(
     private readonly prisma: PrismaService,
     private emailService: EmailService,
     private verificationService: VerificationService,
   ) {}
 
-  async createCliente(createClienteDto: CreateClienteDto) {
-    const toLowerCaseDto = normalizeStrings(createClienteDto);
-    const hashedPassword = await bcrypt.hash(createClienteDto.password, 10);
+  async createPrestador(createPrestadorDto: CreatePrestadorDto) {
+    const toLowerCaseDto = normalizeStrings(createPrestadorDto, ['password']);
+    const hashedPassword = await bcrypt.hash(createPrestadorDto.password, 10);
 
-    const existingEmail = await this.prisma.cliente.findUnique({
-      where: { email: toLowerCaseDto.email },
+    // Verifica se o email já existe
+    const data = Object.fromEntries(
+      Object.entries(toLowerCaseDto).filter(
+        ([_, value]) => value !== undefined,
+      ),
+    );
+
+    // Verifica se o email já existe
+    const existingEmail = await this.prisma.prestador.findUnique({
+      where: { email: data.email },
     });
 
     if (existingEmail) {
-      throw new Error('O email já está em uso.');
+      throw new ConflictException('O email já está em uso.');
     }
 
-    if (createClienteDto.cpf) {
-      const existingCpf = await this.prisma.cliente.findUnique({
-        where: { cpf: createClienteDto.cpf },
+    // Verifica se o CPF já existe
+    if (data.cpf) {
+      const existingCpf = await this.prisma.prestador.findUnique({
+        where: { cpf: data.cpf },
       });
 
       if (existingCpf) {
-        throw new Error('O CPF já está em uso.');
+        throw new ConflictException('O CPF já está em uso.');
       }
     }
 
-    const payload = await this.prisma.cliente.create({
+    // Cria o registro na tabela Prestador
+    const payload = await this.prisma.prestador.create({
       data: {
         telefone: toLowerCaseDto.telefone,
         nome: toLowerCaseDto.nome,
@@ -61,6 +72,9 @@ export class ClienteService {
         endereco_bairro: toLowerCaseDto.endereco_bairro,
         endereco_rua: toLowerCaseDto.endereco_rua,
         endereco_numero: toLowerCaseDto.endereco_numero,
+        especializacao: toLowerCaseDto.especializacao,
+        descricao: toLowerCaseDto.descricao,
+        avaliacao: toLowerCaseDto.avaliacao,
       },
     });
 
@@ -68,19 +82,12 @@ export class ClienteService {
   }
 
   async getById(id: number) {
-    return this.prisma.cliente.findUnique({
-      where: { id_cliente: id },
+    return this.prisma.prestador.findUnique({
+      where: { id_prestador: id },
     });
   }
 
-  // async update(id: number, dto: UpdateClienteDto) {
-  //   return this.prisma.cliente.update({
-  //     where: { id_cliente: id },
-  //     data: dto,
-  //   });
-  // }
-
-  async update(id: number, dto: UpdateClienteDto, fotoUrl?: string) {
+  async update(id: number, dto: UpdatePrestadorDto, fotoUrl?: string) {
     const updateData: any = normalizeStrings(dto, ['password']);
 
     // Se uma fotoUrl foi fornecida, adiciona ao objeto de atualização
@@ -88,14 +95,10 @@ export class ClienteService {
       updateData.foto = fotoUrl;
     }
 
-    return this.prisma.cliente.update({
-      where: { id_cliente: id },
+    return this.prisma.prestador.update({
+      where: { id_prestador: id },
       data: updateData,
     });
-  }
-
-  async findAllClientes() {
-    return this.prisma.cliente.findMany();
   }
 
   // FLUXO DE REDEFINIÇÃO DE SENHA COM TOKEN DE VERIFICAÇÃO POR EMAIL
@@ -105,12 +108,12 @@ export class ClienteService {
   ): Promise<void> {
     const { email } = requestPasswordResetDto;
 
-    // Verificar se o cliente existe
-    const cliente = await this.prisma.cliente.findFirst({
+    // Verificar se o prestador existe
+    const prestador = await this.prisma.prestador.findFirst({
       where: { email },
     });
 
-    if (!cliente) {
+    if (!prestador) {
       // Por segurança, não revelar que o email não existe
       return;
     }
@@ -165,13 +168,13 @@ export class ClienteService {
       throw new BadRequestException(error.message);
     }
 
-    // Buscar o cliente pelo EMAIL (não pelo ID)
-    const cliente = await this.prisma.cliente.findFirst({
+    // Buscar o prestador pelo EMAIL (não pelo ID)
+    const prestador = await this.prisma.prestador.findFirst({
       where: { email },
     });
 
-    if (!cliente) {
-      throw new NotFoundException('cliente não encontrado');
+    if (!prestador) {
+      throw new NotFoundException('Prestador não encontrado');
     }
 
     // Criptografar a nova senha
@@ -180,9 +183,9 @@ export class ClienteService {
     // Marcar código como usado
     this.verificationService.markCodeAsUsed(verificationCode);
 
-    // Atualizar a senha usando o ID do cliente encontrado
-    return this.prisma.cliente.update({
-      where: { id_cliente: cliente.id_cliente }, // ✅ Usa o ID encontrado
+    // Atualizar a senha usando o ID do prestador encontrado
+    return this.prisma.prestador.update({
+      where: { id_prestador: prestador.id_prestador }, // ✅ Usa o ID encontrado
       data: { password: hashedPassword },
     });
   }

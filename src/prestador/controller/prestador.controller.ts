@@ -18,7 +18,11 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import * as sharp from 'sharp';
 
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
-import { ChangePasswordDto } from '../dto/change-password.dto';
+import {
+  ChangePasswordDto,
+  RequestPasswordResetDto,
+  VerifyResetCodeDto,
+} from '../dto/change-password.dto';
 
 @Controller('prestadores')
 export class PrestadorController {
@@ -35,23 +39,6 @@ export class PrestadorController {
   @Post()
   async createPrestador(@Body() createPrestadorDto: CreatePrestadorDto) {
     return this.prestadorService.createPrestador(createPrestadorDto);
-  }
-
-  // Novo endpoint para alteração de senha
-  @Patch(':id/change-password')
-  async changePassword(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() changePasswordDto: ChangePasswordDto,
-  ) {
-    try {
-      const result = await this.prestadorService.changePassword(
-        id,
-        changePasswordDto,
-      );
-      return { message: 'Senha alterada com sucesso' };
-    } catch (error) {
-      throw new BadRequestException(error.message);
-    }
   }
 
   @Patch(':id')
@@ -99,5 +86,40 @@ export class PrestadorController {
     );
 
     return result;
+  }
+
+  // FLUXO DE REDEFINIÇÃO DE SENHA COM TOKEN DE VERIFICAÇÃO POR EMAIL
+  @Post('request-password-reset')
+  async requestPasswordReset(
+    @Body() requestPasswordResetDto: RequestPasswordResetDto,
+  ) {
+    try {
+      await this.prestadorService.requestPasswordReset(requestPasswordResetDto);
+      return { message: 'Código de verificação enviado para o email' };
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  @Post('verify-reset-code')
+  async verifyResetCode(@Body() verifyResetCodeDto: VerifyResetCodeDto) {
+    try {
+      const isValid =
+        await this.prestadorService.verifyResetCode(verifyResetCodeDto);
+      return { valid: isValid, message: 'Código válido' };
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  @Patch('reset/password')
+  async resetPasswordWithCode(@Body() changePasswordDto: ChangePasswordDto) {
+    try {
+      const result =
+        await this.prestadorService.resetPasswordWithCode(changePasswordDto);
+      return { message: 'Senha redefinida com sucesso' };
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
   }
 }
