@@ -90,22 +90,50 @@ export class CardsService {
     const { telefone, cpf, email, id_prestador } = prestadorInfo || {};
     const { id_cliente } = clienteInfo || {};
 
-    const filters = [];
-    if (telefone) filters.push({ telefone });
-    if (cpf) filters.push({ cpf });
-    if (email) filters.push({ email });
+    const whereClause: any = {};
 
-    const whereClause: any = id_cliente
-      ? { id_cliente }
-      : {
-          NOT: {
-            Cliente: {
-              OR: filters,
-            },
+    // Se é um CLIENTE, mostrar apenas seus próprios cards
+    if (id_cliente) {
+      whereClause.id_cliente = id_cliente;
+    }
+    // Se é um PRESTADOR, mostrar cards de outros clientes
+    else if (id_prestador) {
+      const filters = [];
+
+      // CORREÇÃO: Buscar cliente com mesmos dados (cpf, email ou telefone)
+      if (cpf && cpf.trim() !== '') filters.push({ cpf: cpf.trim() });
+      if (email && email.trim() !== '') filters.push({ email: email.trim() });
+      if (telefone && telefone.trim() !== '')
+        filters.push({ telefone: telefone.trim() });
+
+      if (filters.length > 0) {
+        const clienteComMesmosDados = await this.prisma.cliente.findFirst({
+          where: {
+            OR: filters,
           },
-        };
+          select: { id_cliente: true },
+        });
 
-    // CORREÇÃO: Filtro por valor mínimo e máximo
+        // Se encontrou um cliente com os mesmos dados, excluir seus cards
+        if (clienteComMesmosDados) {
+          whereClause.NOT = {
+            id_cliente: clienteComMesmosDados.id_cliente,
+          };
+        }
+      }
+
+      // Garantir que o prestador não veja cards onde já se candidatou
+      whereClause.NOT = {
+        ...whereClause.NOT,
+        Candidatura: {
+          some: {
+            prestador_id: Number(id_prestador),
+          },
+        },
+      };
+    }
+
+    // Filtro por valor mínimo e máximo
     if (valorMin !== undefined || valorMax !== undefined) {
       whereClause.valor = {};
 
@@ -133,6 +161,7 @@ export class CardsService {
         lte: `${dataFinal} 23:59`,
       };
     }
+
     if (categoria) {
       whereClause.categoria = categoria;
     }
@@ -146,7 +175,7 @@ export class CardsService {
         imagens: true,
       },
       orderBy: {
-        updatedAt: 'desc', // Alterado para usar updatedAt como ordenação primária
+        updatedAt: 'desc',
       },
     });
 
@@ -184,6 +213,7 @@ export class CardsService {
 
         return card.Candidatura.some((c) => c.prestador_id === prestadorId);
       }).length,
+
       pendente: allCards.filter((card) => {
         if (card.status_pedido !== 'pendente') return false;
 
@@ -252,7 +282,6 @@ export class CardsService {
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
 
-    // 🛠 Correção: previne slice inválido
     const totalFiltrados = cardsFiltrados.length;
     const safeOffset = offset >= totalFiltrados ? 0 : offset;
     const paginatedCards = cardsFiltrados.slice(safeOffset, safeOffset + limit);
