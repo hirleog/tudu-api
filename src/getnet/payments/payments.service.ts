@@ -192,16 +192,16 @@ export class PaymentsService {
             postal_code: payload.customer.billing_address.postal_code,
           },
         },
-        device: {
-          ip_address: payload.device.ip_address || '127.0.0.1',
-        },
+        // device: {
+        //   ip_address: payload.device.ip_address || '127.0.0.1',
+        // },
         credit: {
           delayed: payload.credit.delayed || false,
           save_card_data: payload.credit.save_card_data || false,
           transaction_type: payload.credit.transaction_type || 'FULL',
           number_installments: payload.credit.number_installments || 1,
           soft_descriptor: payload.credit.soft_descriptor || 'TUDU',
-          dynamic_mcc: payload.credit.dynamic_mcc || 7299,
+          dynamic_mcc: payload.credit.dynamic_mcc || 7298,
           card: {
             number_token: number_token,
             security_code: payload.credit.card.security_code,
@@ -409,7 +409,7 @@ export class PaymentsService {
       where: { id_pagamento: id_pagamento },
     });
 
-  try {
+    try {
       if (!pagamento) {
         throw new Error('Pagamento não encontrado');
       }
