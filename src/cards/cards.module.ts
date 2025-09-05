@@ -4,11 +4,13 @@ import { CardsController } from './cards.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EventsGateway } from 'src/events/events.gateway';
 import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
+import { PaymentsService } from 'src/getnet/payments/payments.service';
+import { InstallmentsService } from 'src/getnet/installments/service/installments.service';
 
 @Module({
   imports: [PrismaModule, CloudinaryModule],
   controllers: [CardsController],
-  providers: [CardsService, EventsGateway],
+  providers: [CardsService, EventsGateway, PaymentsService, InstallmentsService],
   exports: [EventsGateway],
 })
 export class CardsModule {}
