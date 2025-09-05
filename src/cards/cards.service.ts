@@ -11,6 +11,7 @@ import { customAlphabet } from 'nanoid';
 import { EventsGateway } from 'src/events/events.gateway';
 import { Card } from './entities/showcase-card.entity';
 import { CancelCardDto } from './dto/cancel-card.dto';
+import { PaymentsService } from 'src/getnet/payments/payments.service';
 @Injectable()
 export class CardsService {
   private cards: card[] = []; // Simulação de banco de dados em memória
@@ -18,6 +19,7 @@ export class CardsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsGateway: EventsGateway,
+    private readonly paymentsService: PaymentsService,
   ) {}
 
   async create(createCardDto: CreateCardDto, imagensUrl?: string[]) {
@@ -525,69 +527,117 @@ export class CardsService {
     cancelCardDto: CancelCardDto,
     userInfo: { id_cliente?: number; role?: string },
   ) {
-    const { id_cliente, role } = userInfo;
+    return await this.prisma.$transaction(async (prisma) => {
+      const { id_cliente, role } = userInfo;
 
-    // Buscar o card
-    const card = await this.prisma.card.findUnique({
-      where: { id_pedido },
-      include: { Candidatura: true },
+      // Buscar o card dentro da transação
+      const card = await prisma.card.findUnique({
+        where: { id_pedido },
+        include: {
+          Candidatura: true,
+          pagamentos: {
+            where: {
+              status: 'APPROVED',
+              id_pedido: id_pedido,
+            },
+          },
+        },
+      });
+
+      if (!card) {
+        throw new NotFoundException(`Card com ID ${id_pedido} não encontrado`);
+      }
+
+      // Verificar permissões
+      const isOwner = card.id_cliente === id_cliente;
+
+      if (!isOwner) {
+        throw new ForbiddenException(
+          'Você não tem permissão para cancelar este pedido',
+        );
+      }
+
+      // Verificar se já está cancelado
+      if (card.status_pedido === 'cancelado') {
+        throw new ForbiddenException('Este pedido já está cancelado');
+      }
+
+      // Verificar se pode ser cancelado (não finalizado)
+      if (card.status_pedido === 'finalizado') {
+        throw new ForbiddenException(
+          'Pedidos finalizados não podem ser cancelados',
+        );
+      }
+
+      // ✅ 1. Cancelar pagamentos aprovados (JÁ ATUALIZA NO BANCO)
+      const cancelamentoPagamentos = [];
+      for (const pagamento of card.pagamentos) {
+        try {
+          const resultado =
+            await this.paymentsService.cancelarPagamentoCompleto(
+              pagamento.id_pagamento,
+              pagamento.total_amount,
+            );
+
+          if (!resultado.success) {
+            throw new Error(
+              `Falha ao cancelar pagamento ${pagamento.id_pagamento}: ${resultado.error}`,
+            );
+          }
+
+          // O paymentsService.cancelarPagamentoCompleto já atualizou o banco
+
+          cancelamentoPagamentos.push({
+            id_pagamento: pagamento.id_pagamento,
+            success: true,
+            cancel_amount: pagamento.total_amount,
+            message: 'Cancelado com sucesso',
+          });
+        } catch (error) {
+          throw new Error(
+            `Falha ao cancelar pagamento ${pagamento.id_pagamento}: ${error.message}`,
+          );
+        }
+      }
+
+      // ✅ 2. Cancelar o card
+      const updatedCard = await prisma.card.update({
+        where: { id_pedido },
+        data: {
+          status_pedido: 'cancelado',
+          cancellation_reason:
+            cancelCardDto.cancellation_reason || 'Cancelado pelo usuário',
+          updatedAt: new Date(),
+        },
+        include: {
+          Candidatura: true,
+          imagens: true,
+          pagamentos: true,
+        },
+      });
+
+      // ✅ 3. Notificações
+      try {
+        await this.eventsGateway.notificarAtualizacao(updatedCard);
+        this.eventsGateway.notifyClientStatusChange(
+          updatedCard.id_pedido,
+          updatedCard.status_pedido,
+        );
+      } catch (notificationError) {
+        console.warn(
+          'Erro na notificação WebSocket:',
+          notificationError.message,
+        );
+      }
+
+      return {
+        status: 'success',
+        message: 'Pedido cancelado com sucesso',
+        card: updatedCard,
+        pagamentosCancelados: cancelamentoPagamentos,
+      };
     });
-
-    if (!card) {
-      throw new NotFoundException(`Card com ID ${id_pedido} não encontrado`);
-    }
-
-    // Verificar permissões
-    const isOwner = card.id_cliente === id_cliente;
-    // const isAdmin = role === 'admin';
-
-    if (!isOwner) {
-      throw new ForbiddenException(
-        'Você não tem permissão para cancelar este pedido',
-      );
-    }
-
-    // Verificar se já está cancelado
-    if (card.status_pedido === 'cancelado') {
-      throw new ForbiddenException('Este pedido já está cancelado');
-    }
-
-    // Verificar se pode ser cancelado (não finalizado)
-    if (card.status_pedido === 'finalizado') {
-      throw new ForbiddenException(
-        'Pedidos finalizados não podem ser cancelados',
-      );
-    }
-
-    // Realizar o cancelamento lógico
-    const updatedCard = await this.prisma.card.update({
-      where: { id_pedido },
-      data: {
-        status_pedido: 'cancelado',
-        cancellation_reason:
-          cancelCardDto.cancellation_reason || 'Cancelado pelo usuário',
-        updatedAt: new Date(),
-      },
-      include: {
-        Candidatura: true,
-        imagens: true,
-      },
-    });
-
-    // Notificar via WebSocket
-    await this.eventsGateway.notificarAtualizacao(updatedCard);
-    this.eventsGateway.notifyClientStatusChange(
-      updatedCard.id_pedido,
-      updatedCard.status_pedido,
-    );
-
-    return {
-      status: 'success',
-      message: 'Pedido cancelado com sucesso',
-      card: updatedCard,
-    };
   }
-
   adjustTimezone(date: Date): Date {
     const adjustedDate = new Date(date);
     // Ajuste de -3 horas para UTC-3 (Brasília)

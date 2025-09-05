@@ -8,5 +8,6 @@ import { InstallmentsService } from '../installments/service/installments.servic
   imports: [PrismaModule],
   controllers: [PaymentsController],
   providers: [PaymentsService, InstallmentsService],
+  exports: [PaymentsService, InstallmentsService], // precisa exportar
 })
 export class PaymentsModule {}
