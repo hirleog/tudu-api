@@ -192,9 +192,7 @@ export class PaymentsService {
             postal_code: payload.customer.billing_address.postal_code,
           },
         },
-        // device: {
-        //   ip_address: payload.device.ip_address || '127.0.0.1',
-        // },
+        device: payload.device,
         credit: {
           delayed: payload.credit.delayed || false,
           save_card_data: payload.credit.save_card_data || false,
