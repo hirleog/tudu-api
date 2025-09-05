@@ -196,7 +196,7 @@ export class PaymentsService {
         credit: {
           delayed: payload.credit.delayed || false,
           save_card_data: payload.credit.save_card_data || false,
-          transaction_type: payload.credit.transaction_type || 'FULL',
+          transaction_type: payload.credit.transaction_type,
           number_installments: payload.credit.number_installments || 1,
           soft_descriptor: payload.credit.soft_descriptor || 'TUDU',
           dynamic_mcc: payload.credit.dynamic_mcc || 7298,
