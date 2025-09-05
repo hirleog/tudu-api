@@ -39,6 +39,11 @@ import { PrismaModule } from './prisma/prisma.module';
   ],
   controllers: [InstallmentsController, AppController],
   providers: [
-        EmailService, VerificationService, AppService, EventsGateway, PaymentsService],
+    EmailService,
+    VerificationService,
+    AppService,
+    EventsGateway,
+    PaymentsService,
+  ],
 })
 export class AppModule {}
