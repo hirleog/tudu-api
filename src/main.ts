@@ -1,9 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Especificamos o tipo NestExpressApplication para acessar o Express subjacente
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Configura trust proxy para obter IP real do cliente
+  app.getHttpAdapter().getInstance().set('trust proxy', true);
 
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -23,9 +28,8 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
-
       transformOptions: {
-        enableImplicitConversion: true, // CONVERTE string para number, boolean, etc.
+        enableImplicitConversion: true,
       },
     }),
   );

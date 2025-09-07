@@ -1,3 +1,4 @@
+import { IpDeviceController } from './getnet/ip-device/ip-device.controller';
 import { EmailService } from './email/email.service';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -37,7 +38,8 @@ import { PrismaModule } from './prisma/prisma.module';
 
     PaymentsModule,
   ],
-  controllers: [InstallmentsController, AppController],
+  controllers: [
+        IpDeviceController, InstallmentsController, AppController],
   providers: [
     EmailService,
     VerificationService,
