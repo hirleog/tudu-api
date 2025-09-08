@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   InternalServerErrorException,
   Param,
   Post,
@@ -172,9 +173,16 @@ export class CardsController {
 
   @UseGuards(MultiRoleAuthGuard)
   @Get(':id_pedido')
-  async findById(@Req() req: any, @Param('id_pedido') id_pedido: string) {
+  async findById(
+    @Req() req: any,
+    @Param('id_pedido') id_pedido: string,
+    @Headers('id_prestador') idPrestadorHeader?: string,
+  ) {
     let prestadorInfo = null;
     let clienteInfo = null;
+
+    // Extrai o id_prestador do header, se existir
+    const idPrestadorFromHeader = idPrestadorHeader?.trim() || null;
 
     if (req.user.role === 'prestador') {
       const prestador = await this.prisma.prestador.findUnique({
@@ -192,8 +200,11 @@ export class CardsController {
 
       prestadorInfo = {
         id_prestador: req.user.sub,
+        cpf: prestador.cpf,
+        email: prestador.email,
+        telefone: prestador.telefone,
       };
-    } else {
+    } else if (req.user.role === 'cliente') {
       const cliente = await this.prisma.cliente.findUnique({
         where: { id_cliente: req.user.sub },
         select: {
@@ -210,10 +221,19 @@ export class CardsController {
 
       clienteInfo = {
         id_cliente: cliente.id_cliente,
+        cpf: cliente.cpf,
+        email: cliente.email,
+        telefone: cliente.telefone,
       };
     }
 
-    return this.cardsService.findById(id_pedido, prestadorInfo, clienteInfo);
+    // Se veio id_prestador no header, usa ele no service
+    return this.cardsService.findById(
+      id_pedido,
+      prestadorInfo,
+      clienteInfo,
+      idPrestadorFromHeader, // Passa o id_prestador do header
+    );
   }
 
   @Put(':id_pedido')
@@ -245,6 +265,19 @@ export class CardsController {
     @Request() req,
   ) {
     return this.cardsService.cancel(id_pedido, cancelCardDto, {
+      id_cliente: req.user.sub,
+      role: req.user.role,
+    });
+  }
+
+  @UseGuards(MultiRoleAuthGuard)
+  @Delete('/candidatura/:id_pedido/:id_candidatura')
+  async cancelarCandidatura(
+    @Param('id_pedido') id_pedido: string,
+    @Param('id_candidatura') id_candidatura: string,
+    @Request() req,
+  ) {
+    return this.cardsService.cancelarCandidatura(id_pedido, id_candidatura, {
       id_cliente: req.user.sub,
       role: req.user.role,
     });
