@@ -100,11 +100,11 @@ export class InstallmentsService {
       currency: 'BRL',
     }).format(installmentValue);
 
-    const interestText = hasInterest
-      ? `(com ${interestRate.toFixed(2)}% de juros)`
-      : '(sem juros)';
+    // const interestText = hasInterest
+    //   ? `(com ${interestRate.toFixed(2)}% de juros)`
+    //   : '(sem juros)';
 
-    return `${installments}x de ${formattedValue} ${interestText}`;
+    return `${installments}x de ${formattedValue} `;
   }
 
   validateInstallment(selectedInstallment: SelectedInstallmentDto): boolean {

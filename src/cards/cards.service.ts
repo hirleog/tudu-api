@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -348,6 +349,7 @@ export class CardsService {
     clienteInfo: {
       id_cliente?: number;
     } | null,
+    idPrestadorFromHeader,
   ): Promise<any> {
     const { id_prestador } = prestadorInfo || {};
     const { id_cliente } = clienteInfo || {};
@@ -746,5 +748,73 @@ export class CardsService {
       console.error('Error in getServiceCardsWithDisabled:', error);
       throw error;
     }
+  }
+
+  async cancelarCandidatura(
+    id_pedido: string,
+    id_candidatura: string,
+    userInfo: { id_cliente?: number; role?: string },
+  ) {
+    return await this.prisma.$transaction(async (prisma) => {
+      const { id_cliente, role } = userInfo;
+
+      // Buscar a candidatura e o card relacionado
+      const candidatura = await prisma.candidatura.findUnique({
+        where: { id_candidatura: Number(id_candidatura) },
+        include: {
+          Card: true,
+          Prestador: true,
+        },
+      });
+
+      if (!candidatura) {
+        throw new NotFoundException(
+          `Candidatura com ID ${id_candidatura} não encontrada`,
+        );
+      }
+
+      // Verificar se a candidatura pertence ao card especificado
+      if (candidatura.id_pedido !== id_pedido) {
+        throw new BadRequestException(
+          'A candidatura não pertence a este pedido',
+        );
+      }
+
+      // Verificar se a candidatura já está cancelada
+      if (candidatura.status === 'cancelado') {
+        throw new ForbiddenException('Esta candidatura já está cancelada');
+      }
+
+      // Atualizar o status da candidatura para cancelado
+      const candidaturaDeletada = await prisma.candidatura.delete({
+        where: { id_candidatura: Number(id_candidatura) },
+        include: {
+          Card: true,
+          Prestador: true,
+        },
+      });
+
+      // Notificar via WebSocket sobre a atualização
+      // try {
+      //   await this.eventsGateway.notificarAtualizacao(candidatura.Card);
+
+      //   // Notificar o prestador sobre o cancelamento da sua candidatura
+      //   this.eventsGateway.notifyPrestadorCandidaturaCancelada(
+      //     candidatura.prestador_id,
+      //     id_pedido,
+      //     id_candidatura,
+      //   );
+      // } catch (notificationError) {
+      //   console.warn(
+      //     'Erro na notificação WebSocket:',
+      //     notificationError.message,
+      //   );
+      // }
+      return {
+        status: 'success',
+        message: 'Candidatura removida com sucesso',
+        candidatura: candidaturaDeletada,
+      };
+    });
   }
 }
