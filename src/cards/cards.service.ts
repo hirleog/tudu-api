@@ -101,39 +101,57 @@ export class CardsService {
     }
     // Se é um PRESTADOR, mostrar cards de outros clientes
     else if (id_prestador) {
-      const filters = [];
+      if (status_pedido !== 'pendente') {
+        const filters = [];
+        let clienteIdParaExcluir: number | null = null;
 
-      // CORREÇÃO: Buscar cliente com mesmos dados (cpf, email ou telefone)
-      if (cpf && cpf.trim() !== '') filters.push({ cpf: cpf.trim() });
-      if (email && email.trim() !== '') filters.push({ email: email.trim() });
-      if (telefone && telefone.trim() !== '')
-        filters.push({ telefone: telefone.trim() });
+        // CORREÇÃO: Buscar cliente com mesmos dados (cpf, email ou telefone)
+        if (cpf && cpf.trim() !== '') filters.push({ cpf: cpf.trim() });
+        if (email && email.trim() !== '') filters.push({ email: email.trim() });
+        if (telefone && telefone.trim() !== '')
+          filters.push({ telefone: telefone.trim() });
 
-      if (filters.length > 0) {
-        const clienteComMesmosDados = await this.prisma.cliente.findFirst({
-          where: {
-            OR: filters,
+        if (filters.length > 0) {
+          const clienteComMesmosDados = await this.prisma.cliente.findFirst({
+            where: {
+              OR: filters,
+            },
+            select: { id_cliente: true },
+          });
+
+          // Se encontrou um cliente com os mesmos dados, excluir seus cards
+          if (clienteComMesmosDados) {
+            clienteIdParaExcluir = clienteComMesmosDados.id_cliente;
+          }
+        }
+
+        // CORREÇÃO: Combinar as condições NOT em vez de sobrescrever
+        const notConditions: any[] = [];
+
+        // Excluir cards onde o prestador já se candidatou
+        notConditions.push({
+          Candidatura: {
+            some: {
+              prestador_id: Number(id_prestador),
+              status: {
+                notIn: ['negociacao', 'recusado'], // ← Ajuste conforme necessário
+              },
+            },
           },
-          select: { id_cliente: true },
         });
 
-        // Se encontrou um cliente com os mesmos dados, excluir seus cards
-        if (clienteComMesmosDados) {
-          whereClause.NOT = {
-            id_cliente: clienteComMesmosDados.id_cliente,
-          };
+        // Excluir cards do próprio cliente (se encontrado)
+        if (clienteIdParaExcluir !== null) {
+          notConditions.push({
+            id_cliente: clienteIdParaExcluir,
+          });
+        }
+
+        // Aplicar todas as condições NOT
+        if (notConditions.length > 0) {
+          whereClause.NOT = notConditions;
         }
       }
-
-      // Garantir que o prestador não veja cards onde já se candidatou
-      whereClause.NOT = {
-        ...whereClause.NOT,
-        Candidatura: {
-          some: {
-            prestador_id: Number(id_prestador),
-          },
-        },
-      };
     }
 
     // Filtro por valor mínimo e máximo

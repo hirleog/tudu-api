@@ -112,7 +112,7 @@ model Card {
   id_prestador              Int?
   categoria                 String
   subcategoria              String
-  serviceDescription        String?
+  serviceDescription        String?       @db.Text
   valor                     Decimal       @db.Decimal(10, 2)
   horario_preferencial      String
   valor_negociado_cliente   String?

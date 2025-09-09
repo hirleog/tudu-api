@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -82,6 +83,22 @@ export class ClienteService {
 
   async update(id: number, dto: UpdateClienteDto, fotoUrl?: string) {
     const updateData: any = normalizeStrings(dto, ['password']);
+
+    const { cpf, ...rest } = dto;
+
+    // Verificar se o CPF já existe para outro cliente
+    if (cpf) {
+      const clienteComMesmoCpf = await this.prisma.cliente.findFirst({
+        where: {
+          cpf: cpf,
+          id_cliente: { not: id }, // Excluir o próprio cliente da verificação
+        },
+      });
+
+      if (clienteComMesmoCpf) {
+        throw new ConflictException('CPF já cadastrado para outro cliente');
+      }
+    }
 
     // Se uma fotoUrl foi fornecida, adiciona ao objeto de atualização
     if (fotoUrl !== undefined) {
