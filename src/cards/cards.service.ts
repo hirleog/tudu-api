@@ -101,7 +101,10 @@ export class CardsService {
     }
     // Se é um PRESTADOR, mostrar cards de outros clientes
     else if (id_prestador) {
-      if (status_pedido !== 'pendente') {
+      // ✅ APENAS aplicar filtros NOT para status 'publicado'
+      const aplicarFiltrosNot = status_pedido === 'publicado';
+
+      if (aplicarFiltrosNot) {
         const filters = [];
         let clienteIdParaExcluir: number | null = null;
 
@@ -125,16 +128,15 @@ export class CardsService {
           }
         }
 
-        // CORREÇÃO: Combinar as condições NOT em vez de sobrescrever
         const notConditions: any[] = [];
 
-        // Excluir cards onde o prestador já se candidatou
+        // Excluir cards onde o prestador já se candidatou (apenas para publicado)
         notConditions.push({
           Candidatura: {
             some: {
               prestador_id: Number(id_prestador),
               status: {
-                notIn: ['negociacao', 'recusado'], // ← Ajuste conforme necessário
+                notIn: ['negociacao', 'recusado'],
               },
             },
           },
@@ -147,7 +149,6 @@ export class CardsService {
           });
         }
 
-        // Aplicar todas as condições NOT
         if (notConditions.length > 0) {
           whereClause.NOT = notConditions;
         }
@@ -200,12 +201,14 @@ export class CardsService {
       },
     });
 
+    // ✅ CONTADORES ATUALIZADOS com a mesma lógica do filtro
     const counts = {
-      publicado: allCards.filter(
-        (card) =>
+      publicado: allCards.filter((card) => {
+        return (
           card.status_pedido === 'publicado' &&
-          !card.Candidatura.some((c) => c.prestador_id === prestadorId),
-      ).length,
+          !card.Candidatura.some((c) => c.prestador_id === prestadorId)
+        );
+      }).length,
 
       andamento: allCards.filter((card) => {
         const emNegociacao = card.Candidatura.some(
@@ -230,9 +233,15 @@ export class CardsService {
       cancelado: allCards.filter((card) => {
         if (card.status_pedido !== 'cancelado') return false;
 
+        // ✅ CORREÇÃO: Cliente vê TODOS seus cancelados
         if (id_cliente && card.id_cliente === id_cliente) return true;
 
-        return card.Candidatura.some((c) => c.prestador_id === prestadorId);
+        // ✅ CORREÇÃO: Prestador vê cancelados onde participou
+        if (id_prestador) {
+          return card.Candidatura.some((c) => c.prestador_id === prestadorId);
+        }
+
+        return false;
       }).length,
 
       pendente: allCards.filter((card) => {
@@ -277,11 +286,15 @@ export class CardsService {
       }
 
       if (status_pedido === 'cancelado') {
-        const canceladoComCandidatura =
-          card.status_pedido === 'cancelado' &&
-          card.Candidatura.some((c) => c.prestador_id === prestadorId);
-
-        return canceladoComCandidatura;
+        // ✅ CORREÇÃO: Cliente vê TODOS seus cancelados
+        if (id_cliente && card.id_cliente === id_cliente) {
+          return true;
+        }
+        // ✅ CORREÇÃO: Prestador vê cancelados onde participou
+        if (id_prestador) {
+          return card.Candidatura.some((c) => c.prestador_id === prestadorId);
+        }
+        return false;
       }
 
       return true;
@@ -358,7 +371,6 @@ export class CardsService {
       counts,
     };
   }
-
   async findById(
     id_pedido: string,
     prestadorInfo: {
@@ -620,7 +632,20 @@ export class CardsService {
         }
       }
 
-      // ✅ 2. Cancelar o card
+      // ✅ 2. Cancelar todas as candidaturas relacionadas ao card
+      await prisma.candidatura.updateMany({
+        where: {
+          id_pedido: id_pedido,
+          status: {
+            not: 'cancelado', // Opcional: atualizar apenas as que não estão canceladas
+          },
+        },
+        data: {
+          status: 'cancelado',
+        },
+      });
+
+      // ✅ 3. Cancelar o card
       const updatedCard = await prisma.card.update({
         where: { id_pedido },
         data: {
@@ -630,13 +655,13 @@ export class CardsService {
           updatedAt: new Date(),
         },
         include: {
-          Candidatura: true,
           imagens: true,
           pagamentos: true,
+          Candidatura: true, // Incluir as candidaturas atualizadas na resposta
         },
       });
 
-      // ✅ 3. Notificações
+      // ✅ 4. Notificações
       try {
         await this.eventsGateway.notificarAtualizacao(updatedCard);
         this.eventsGateway.notifyClientStatusChange(
