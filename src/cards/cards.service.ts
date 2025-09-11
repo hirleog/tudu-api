@@ -108,7 +108,6 @@ export class CardsService {
         const filters = [];
         let clienteIdParaExcluir: number | null = null;
 
-        // CORREÇÃO: Buscar cliente com mesmos dados (cpf, email ou telefone)
         if (cpf && cpf.trim() !== '') filters.push({ cpf: cpf.trim() });
         if (email && email.trim() !== '') filters.push({ email: email.trim() });
         if (telefone && telefone.trim() !== '')
@@ -122,7 +121,6 @@ export class CardsService {
             select: { id_cliente: true },
           });
 
-          // Se encontrou um cliente com os mesmos dados, excluir seus cards
           if (clienteComMesmosDados) {
             clienteIdParaExcluir = clienteComMesmosDados.id_cliente;
           }
@@ -142,7 +140,6 @@ export class CardsService {
           },
         });
 
-        // Excluir cards do próprio cliente (se encontrado)
         if (clienteIdParaExcluir !== null) {
           notConditions.push({
             id_cliente: clienteIdParaExcluir,
@@ -201,7 +198,6 @@ export class CardsService {
       },
     });
 
-    // ✅ CONTADORES ATUALIZADOS com a mesma lógica do filtro
     const counts = {
       publicado: allCards.filter((card) => {
         return (
@@ -233,10 +229,8 @@ export class CardsService {
       cancelado: allCards.filter((card) => {
         if (card.status_pedido !== 'cancelado') return false;
 
-        // ✅ CORREÇÃO: Cliente vê TODOS seus cancelados
         if (id_cliente && card.id_cliente === id_cliente) return true;
 
-        // ✅ CORREÇÃO: Prestador vê cancelados onde participou
         if (id_prestador) {
           return card.Candidatura.some((c) => c.prestador_id === prestadorId);
         }
@@ -286,11 +280,12 @@ export class CardsService {
       }
 
       if (status_pedido === 'cancelado') {
-        // ✅ CORREÇÃO: Cliente vê TODOS seus cancelados
+        // ✅ AGORA SÓ TRÁS CANCELADOS
+        if (card.status_pedido !== 'cancelado') return false;
+
         if (id_cliente && card.id_cliente === id_cliente) {
           return true;
         }
-        // ✅ CORREÇÃO: Prestador vê cancelados onde participou
         if (id_prestador) {
           return card.Candidatura.some((c) => c.prestador_id === prestadorId);
         }
@@ -371,6 +366,7 @@ export class CardsService {
       counts,
     };
   }
+
   async findById(
     id_pedido: string,
     prestadorInfo: {
