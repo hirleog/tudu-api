@@ -27,7 +27,7 @@ export class ClienteService {
   ) {}
 
   async createCliente(createClienteDto: CreateClienteDto) {
-    const toLowerCaseDto = normalizeStrings(createClienteDto);
+    const toLowerCaseDto = normalizeStrings(createClienteDto, ['password']);
     const hashedPassword = await bcrypt.hash(createClienteDto.password, 10);
 
     const existingEmail = await this.prisma.cliente.findUnique({
