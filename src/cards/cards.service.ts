@@ -811,6 +811,25 @@ export class CardsService {
     }
   }
 
+  async getHighlightsCategorias(): Promise<{
+    highlights: { categoria: string; total: number }[];
+  }> {
+    // Agrupa e conta os cards por categoria
+    const categorias = await this.prisma.card.groupBy({
+      by: ['categoria'],
+      _count: { categoria: true },
+      orderBy: { _count: { categoria: 'desc' } },
+    });
+
+    // Monta o array de highlights
+    const highlights = categorias.map((cat) => ({
+      categoria: cat.categoria,
+      total: cat._count.categoria,
+    }));
+
+    return { highlights };
+  }
+
   async cancelarCandidatura(
     id_pedido: string,
     id_candidatura: string,

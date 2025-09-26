@@ -26,8 +26,8 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import * as sharp from 'sharp';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
-import { Card } from './entities/showcase-card.entity';
 import { CancelCardDto } from './dto/cancel-card.dto';
+import { Card } from './entities/showcase-card.entity';
 
 @Controller('cards')
 export class CardsController {
@@ -281,5 +281,10 @@ export class CardsController {
       id_cliente: req.user.sub,
       role: req.user.role,
     });
+  }
+
+  @Get('categorias/highlights')
+  async getHighlightsCategorias() {
+    return this.cardsService.getHighlightsCategorias();
   }
 }
