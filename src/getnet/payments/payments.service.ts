@@ -737,7 +737,7 @@ export class PaymentsService {
    * Busca pagamentos por cliente com paginação
    */
   async buscarPagamentosPorClientePaginado(
-    id_cliente: number,
+    id_prestador: number,
     page: number = 1,
     limit: number = 10,
   ) {
@@ -747,24 +747,24 @@ export class PaymentsService {
       this.prisma.pagamento.findMany({
         where: {
           Card: {
-            id_cliente: id_cliente,
+            id_prestador: id_prestador,
           },
         },
-        include: {
-          Card: {
-            include: {
-              Prestador: {
-                select: {
-                  id_prestador: true,
-                  nome: true,
-                  sobrenome: true,
-                  foto: true,
-                  especializacao: true,
-                },
-              },
-            },
-          },
-        },
+        // include: {
+        //   Card: {
+        //     include: {
+        //       Prestador: {
+        //         select: {
+        //           id_prestador: true,
+        //           nome: true,
+        //           sobrenome: true,
+        //           foto: true,
+        //           especializacao: true,
+        //         },
+        //       },
+        //     },
+        //   },
+        // },
         orderBy: {
           created_at: 'desc',
         },
@@ -774,7 +774,7 @@ export class PaymentsService {
       this.prisma.pagamento.count({
         where: {
           Card: {
-            id_cliente: id_cliente,
+            id_prestador: id_prestador,
           },
         },
       }),

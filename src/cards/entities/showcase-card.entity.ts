@@ -8,4 +8,5 @@ export interface Card {
   icon: string;
   cardDetail: CardDetail;
   disabled: boolean;
+  id_pedido?: string;
 }

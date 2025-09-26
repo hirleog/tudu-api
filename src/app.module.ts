@@ -18,6 +18,7 @@ import { PaymentsService } from './getnet/payments/payments.service';
 import { ImagemModule } from './imagem/imagem.module';
 import { PrestadorModule } from './prestador/prestador.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { MalgaModule } from './malga/malga.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PrestadorModule,
     PrismaModule,
     AuthModule,
+    MalgaModule,
     ExperienciaModule,
     ConfigModule.forRoot({
       isGlobal: true, // para estar disponível em toda a aplicação
@@ -38,8 +40,7 @@ import { PrismaModule } from './prisma/prisma.module';
 
     PaymentsModule,
   ],
-  controllers: [
-        IpDeviceController, InstallmentsController, AppController],
+  controllers: [IpDeviceController, InstallmentsController, AppController],
   providers: [
     EmailService,
     VerificationService,

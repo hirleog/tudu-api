@@ -748,36 +748,58 @@ export class CardsService {
   ): Promise<{ cards: Card[]; counts: any }> {
     try {
       let activeCategories: string[] = [];
+      // Agora o map guarda um array de objetos { id_pedido, status_pedido }
+      let categoryPedidoMap: Record<
+        string,
+        { id_pedido: string; status_pedido: string }[]
+      > = {};
 
-      // 1. Buscar apenas categorias ativas (não finalizadas nem canceladas)
       if (clientId !== undefined) {
+        // Busca todos os cards ativos do cliente
         const activeCards = await this.prisma.card.findMany({
           where: {
             id_cliente: clientId,
             status_pedido: {
-              notIn: ['finalizado', 'cancelado'], // ← FILTRO OTIMIZADO
+              notIn: ['finalizado', 'cancelado'],
             },
           },
           select: {
             categoria: true,
+            id_pedido: true,
+            status_pedido: true,
           },
-          distinct: ['categoria'], // ← EVITA DUPLICATAS
         });
 
         activeCategories = activeCards.map((card) => card.categoria);
+
+        // Mapeia categoria => array de { id_pedido, status_pedido }
+        activeCards.forEach((card) => {
+          if (!categoryPedidoMap[card.categoria]) {
+            categoryPedidoMap[card.categoria] = [];
+          }
+          categoryPedidoMap[card.categoria].push({
+            id_pedido: card.id_pedido,
+            status_pedido: card.status_pedido,
+          });
+        });
       }
 
-      // 2. Processar os cards do showcase
       const processedCards = this.showcaseCards.map((card) => {
-        const isDisabled = activeCategories.includes(card.cardDetail.label);
+        const categoriaShowcase = card.cardDetail.label;
+        const isDisabled = activeCategories.includes(categoriaShowcase);
+        // Retorna todos os pedidos ativos e seus status da categoria
+        const pedidos_ativos = isDisabled
+          ? (categoryPedidoMap[categoriaShowcase] ?? [])
+          : [];
         return {
           ...card,
           disabled: isDisabled,
+          pedidos_ativos, // array de { id_pedido, status_pedido }
         };
       });
 
       return {
-        cards: clientId !== undefined ? processedCards : this.showcaseCards,
+        cards: processedCards,
         counts: {
           total: processedCards.length,
           disabled: activeCategories.length,

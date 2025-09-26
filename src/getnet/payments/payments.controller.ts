@@ -69,18 +69,19 @@ export class PaymentsController {
     };
   }
 
+  @Get('cliente/:id_prestador/dashboard')
   async dashboardCliente(
-    @Param('id_cliente') id_cliente: number,
+    @Param('id_prestador') id_prestador: number,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
   ) {
     const [pagamentosPaginados, estatisticas] = await Promise.all([
       this.paymentsService.buscarPagamentosPorClientePaginado(
-        id_cliente,
+        id_prestador,
         page,
         limit,
       ),
-      this.paymentsService.estatisticasPagamentosCliente(id_cliente),
+      this.paymentsService.estatisticasPagamentosCliente(id_prestador),
     ]);
 
     return {
@@ -92,11 +93,10 @@ export class PaymentsController {
       },
     };
   }
-
-  @Get('cliente/:id_cliente/estatisticas')
-  async estatisticasCliente(@Param('id_cliente') id_cliente: number) {
+  @Get('cliente/:id_prestador/estatisticas')
+  async estatisticasCliente(@Param('id_prestador') id_prestador: number) {
     const estatisticas =
-      await this.paymentsService.estatisticasPagamentosCliente(id_cliente);
+      await this.paymentsService.estatisticasPagamentosCliente(id_prestador);
 
     return {
       success: true,
