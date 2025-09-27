@@ -95,6 +95,7 @@ export class CardsController {
     @Query('dataInicial') dataInicial?: string,
     @Query('dataFinal') dataFinal?: string,
     @Query('categoria') categoria?: string,
+    @Query('filters') filters?: string,
   ) {
     // Conversão segura de query params
     const parsedOffset = Number(offset) || 0;
@@ -168,6 +169,7 @@ export class CardsController {
       parsedDataInicial,
       parsedDataFinal,
       categoria,
+      filters,
     );
   }
 

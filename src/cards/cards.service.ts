@@ -33,6 +33,7 @@ export class CardsService {
       categoria: createCardDto.categoria,
       status_pedido: createCardDto.status_pedido,
       subcategoria: createCardDto.subcategoria,
+      filters: createCardDto.filters,
       serviceDescription: createCardDto.serviceDescription,
       valor: createCardDto.valor,
       horario_preferencial: createCardDto.horario_preferencial,
@@ -80,6 +81,7 @@ export class CardsService {
     dataInicial?: string,
     dataFinal?: string,
     categoria?: string,
+    filters?: string,
   ): Promise<{
     cards: any[];
     counts: {
@@ -340,6 +342,7 @@ export class CardsService {
         status_pedido: card.status_pedido,
         categoria: card.categoria,
         subcategoria: card.subcategoria,
+        filters: card.filters,
         serviceDescription: card.serviceDescription || null,
         valor: card.valor.toString(),
         horario_preferencial: card.horario_preferencial,

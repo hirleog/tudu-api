@@ -112,6 +112,7 @@ model Card {
   id_prestador              Int?
   categoria                 String
   subcategoria              String
+  filters                   String?
   serviceDescription        String?       @db.Text
   valor                     Decimal       @db.Decimal(10, 2)
   horario_preferencial      String
