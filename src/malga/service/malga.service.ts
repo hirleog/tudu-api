@@ -455,6 +455,8 @@ export class MalgaService {
         //   },
       }
 
+      console.log('payload malga', malgaPayload);
+
       const response = await firstValueFrom(
         this.httpService.post(`${this.apiUrl}/charges`, malgaPayload, {
           headers: this.getHeaders(),
