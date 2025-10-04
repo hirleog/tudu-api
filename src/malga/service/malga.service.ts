@@ -37,6 +37,10 @@ export class MalgaService {
   }
 
   private getHeaders() {
+    console.log('X-Api-Key', this.apiKey);
+    console.log('X-Client-Id', this.clientId);
+    console.log('merchantId', this.merchantId);
+
     return {
       'X-Api-Key': this.apiKey,
       'X-Client-Id': this.clientId,
@@ -531,7 +535,7 @@ export class MalgaService {
 
       // 6. Retornar resposta de ERRO
       return {
-        error
+        error,
         // success: false,
         // id: pagamentoRegistrado.id,
         // id_pagamento: errorDetails?.id,
