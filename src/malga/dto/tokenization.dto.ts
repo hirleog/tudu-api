@@ -1,10 +1,9 @@
 export class CreateTokenDto {
   card: {
-    number: string;
-    expirationMonth: string;
-    expirationYear: string;
-    securityCode: string;
-    holderName: string;
+    cardNumber: string;
+    cardExpirationDate: string;
+    cardCvv: string;
+    cardHolderName: string;
   };
   customerId?: string;
 }

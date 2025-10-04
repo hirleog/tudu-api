@@ -12,22 +12,34 @@ import {
   CustomerDto,
   UpdateChargeDto,
 } from '../dto/create-create.dto';
+import { PaymentsService } from 'src/getnet/payments/payments.service';
 
 @Injectable()
 export class MalgaService {
-  private readonly apiUrl = 'https://api.malga.io/v1';
+  private readonly apiUrl: string;
   private readonly apiKey: string;
+  private readonly clientId: string;
+  private readonly merchantId: string;
 
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private paymentsService: PaymentsService,
   ) {
+    this.apiUrl =
+      process.env.NODE_ENV !== 'production'
+        ? 'https://sandbox-api.malga.io/v1'
+        : 'https://api.malga.io/v1';
+
     this.apiKey = this.configService.get('MALGA_API_KEY');
+    this.clientId = this.configService.get('MALGA_CLIENT_ID');
+    this.merchantId = this.configService.get('MALGA_MERCHANT_ID');
   }
 
   private getHeaders() {
     return {
-      'X-API-Key': this.apiKey,
+      'X-Api-Key': this.apiKey,
+      'X-Client-Id': this.clientId,
       'Content-Type': 'application/json',
     };
   }
@@ -36,7 +48,7 @@ export class MalgaService {
   async createToken(createTokenDto: CreateTokenDto) {
     try {
       const response = await firstValueFrom(
-        this.httpService.post(`${this.apiUrl}/tokens`, createTokenDto, {
+        this.httpService.post(`${this.apiUrl}/tokens`, createTokenDto.card, {
           headers: this.getHeaders(),
         }),
       );
@@ -344,63 +356,188 @@ export class MalgaService {
     }
   }
 
-  async tokenizeAndPay(paymentData: {
-    merchantId: string;
-    amount: number;
-    currency: string;
-    orderId: string;
-    customer: CustomerDto;
-    card: {
-      number: string;
-      expirationMonth: string;
-      expirationYear: string;
-      securityCode: string;
-      holderName: string;
-    };
-    installments?: number;
-    capture?: boolean;
-    saveCard?: boolean;
-  }) {
+  async tokenizeAndPay(payload: any) {
+    let pagamentoRegistrado = null;
+
     try {
-      // Sempre gera o token
+      // VALIDAÇÃO DAS PARCELAS (usando os novos campos)
+      const installments = payload.paymentMethod.installments || 1;
+
+      // 1. Tokenização do cartão (usando os novos campos do payload)
       const tokenResponse = await this.createToken({
-        card: paymentData.card,
+        card: {
+          cardHolderName: payload.paymentSource.card.cardHolderName,
+          cardNumber: payload.paymentSource.card.cardNumber,
+          cardCvv: payload.paymentSource.card.cardCvv,
+          cardExpirationDate: payload.paymentSource.card.cardExpirationDate,
+        },
       });
+
       const tokenId = tokenResponse.tokenId;
 
-      // Aqui você pode salvar o token se saveCard for true (lógica extra, se necessário)
-
-      const chargeData: CreateChargeDto = {
-        merchantId: paymentData.merchantId,
-        amount: paymentData.amount,
-        currency: paymentData.currency,
-        orderId: paymentData.orderId,
-        customer: paymentData.customer,
-        paymentMethod: {
-          paymentType: 'credit',
-          installments: paymentData.installments || 1,
-          card: {
-            number: `token_${tokenId}`,
-            expirationMonth: paymentData.card.expirationMonth,
-            expirationYear: paymentData.card.expirationYear,
-            securityCode: paymentData.card.securityCode,
-            holderName: paymentData.card.holderName,
+      // 2. Montar payload no formato Malga CORRIGIDO
+      const malgaPayload = {
+        appInfo: {
+          platform: {
+            integrator: 'tudu-manager',
+            name: 'TUDU Serviços',
+            version: '1.0',
+          },
+          device: {
+            name: 'iOS',
+            version: '10.12',
+          },
+          system: {
+            name: 'VTEX',
+            version: '13.12',
           },
         },
-        capture: paymentData.capture !== false,
+        merchantId: this.merchantId,
+        amount: payload.amount,
+        currency: payload.currency || 'BRL',
+        statementDescriptor: payload.statementDescriptor || 'TUDU',
+        description: payload.description || `Pedido ${payload.id_pedido}`,
+        capture: payload.capture !== undefined ? payload.capture : false,
+        orderId: payload.orderId,
+        paymentMethod: {
+          paymentType: payload.paymentMethod.paymentType,
+          installments: installments,
+        },
+        paymentSource: {
+          sourceType: 'token',
+          tokenId: tokenId,
+        },
       };
 
-      const chargeResponse = await this.createCharge(chargeData);
+      // {
+      // appInfo PRIMEIRO (conforme exemplo que funciona)
+      //   appInfo: payload.appInfo || {
+      //     platform: {
+      //       integrator: 'tudu-manager',
+      //       name: 'TUDU Serviços',
+      //       version: '1.0',
+      //     },
+      //     device: {
+      //       name: 'Web',
+      //       version: '1.0',
+      //     },
+      //     system: {
+      //       name: 'TUDU Sistema',
+      //       version: '1.0',
+      //     },
+      //   },
+      //   merchantId: this.merchantId,
+      // amount: payload.amount, // Já validado e potencialmente ajustado
+      // currency: payload.currency || 'BRL',
+      // statementDescriptor: payload.statementDescriptor || 'TUDU',
+      // description: payload.description || `Pedido ${payload.id_pedido}`,
+      // capture: payload.capture !== undefined ? payload.capture : false,
+      // orderId: payload.orderId,
+      //   // Estrutura de paymentMethod da Malga
+      // paymentMethod: {
+      //   paymentType: payload.paymentMethod.paymentType,
+      //   installments: installments,
+      // },
+      //   // Estrutura de paymentSource da Malga - CORRIGIDO COM prefixo token_
+      //   paymentSource: {
+      //     sourceType: payload.paymentSource.sourceType,
+      // card: {
+      //   cardNumber: payload.paymentSource.card.cardNumbe, // ← CORREÇÃO: adicionar prefixo token_
+      //   cardCvv: payload.paymentSource.card.cardCvv,
+      //   cardExpirationDate: payload.paymentSource.card.cardExpirationDate,
+      //   cardHolderName: payload.paymentSource.card.cardHolderName,
+      // },
+      //   },
+      // }
 
+      const response = await firstValueFrom(
+        this.httpService.post(`${this.apiUrl}/charges`, malgaPayload, {
+          headers: this.getHeaders(),
+        }),
+      );
+
+      const responseData = response.data;
+
+      // 3. Registrar pagamento no banco - ATUALIZADO
+      pagamentoRegistrado = await this.paymentsService.criarPagamento({
+        id_pagamento: responseData.id,
+        id_pedido: payload.id_pedido,
+        total_amount: payload.amount,
+        origin_amount: payload.originAmount, // valor sem juros
+        status: responseData.status,
+        auth_code: responseData.authorizationCode,
+        response_description: payload.capture
+          ? 'Pagamento realizado com sucesso'
+          : 'Pré-autorização realizada com sucesso',
+        installments: installments,
+        installments_amount:
+          payload.credit?.amount_installment ||
+          Math.round(payload.amount / installments),
+        authorization_date: responseData.createdAt
+          ? new Date(responseData.createdAt)
+          : new Date(),
+        type: 'CREDIT_CARD',
+        host: 'MALGA',
+        charge_id: responseData.id, // Guardar o chargeId para captura futura
+      });
+
+      // 4. Retornar resposta de SUCESSO
       return {
-        ...chargeResponse,
-        tokenId: paymentData.saveCard ? tokenId : undefined,
+        success: true,
+        id: pagamentoRegistrado.id,
+        id_pagamento: responseData.id,
+        charge_id: responseData.id,
+        id_pedido: payload.id_pedido,
+        authorization_code: responseData.authorizationCode,
+        status: responseData.status,
+        status_description: responseData.status,
+        total_amount: responseData.amount,
+        installments: installments,
+        installment_amount:
+          payload.credit?.amount_installment ||
+          Math.round(payload.amount / installments),
+        capture: malgaPayload.capture,
       };
     } catch (error) {
-      throw new HttpException(
-        error.response?.data || 'Erro no fluxo de tokenização e pagamento',
-        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      console.error(
+        'Error processing payment with Malga:',
+        error.response?.data || error.message,
       );
+
+      const errorDetails = error.response?.data;
+      const errorStatus = errorDetails?.status || 'ERROR';
+      const errorDescription =
+        errorDetails?.message || 'Erro ao processar pagamento';
+
+      const installments = payload.paymentMethod?.installments || 1;
+
+      // 5. Registrar pagamento com ERRO no banco
+      pagamentoRegistrado = await this.paymentsService.criarPagamento({
+        id_pagamento: errorDetails?.id,
+        id_pedido: payload.id_pedido,
+        total_amount: payload.amount,
+        origin_amount: payload.originAmount || payload.amount,
+        status: errorStatus,
+        response_description: errorDescription,
+        installments: installments,
+        installments_amount:
+          payload.credit?.amount_installment ||
+          Math.round(payload.amount / installments),
+        type: 'CREDIT_CARD',
+        host: 'MALGA',
+      });
+
+      // 6. Retornar resposta de ERRO
+      return {
+        success: false,
+        id: pagamentoRegistrado.id,
+        id_pagamento: errorDetails?.id,
+        id_pedido: payload.id_pedido,
+        error: errorDescription,
+        status: errorStatus,
+        error_code: errorDetails?.code || 'UNKNOWN_ERROR',
+        details: error.response?.data,
+      };
     }
   }
 }

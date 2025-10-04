@@ -154,6 +154,7 @@ model Pagamento {
   authorization_date   DateTime? // Data de autorização
   capture_date         DateTime? // Data de captura
   reversed_amount      Int? // Valor estornado
+  charge_id            String? // Valor estornado
   created_at           DateTime  @default(now())
   updated_at           DateTime  @default(now()) @updatedAt
 

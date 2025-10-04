@@ -10,9 +10,18 @@ import {
   Delete,
 } from '@nestjs/common';
 
-import { CreateTokenDto, CustomerCreationDto, ValidateTokenDto } from '../dto/tokenization.dto';
-import { CreateChargeDto, CreatePaymentDto, UpdateChargeDto } from '../dto/create-create.dto';
+import {
+  CreateTokenDto,
+  CustomerCreationDto,
+  ValidateTokenDto,
+} from '../dto/tokenization.dto';
+import {
+  CreateChargeDto,
+  CreatePaymentDto,
+  UpdateChargeDto,
+} from '../dto/create-create.dto';
 import { MalgaService } from '../service/malga.service';
+import { MalgaPaymentRequest } from '../entity/malga.entity';
 
 @Controller('malga')
 export class MalgaController {
@@ -138,26 +147,7 @@ export class MalgaController {
   }
 
   @Post('payments/tokenize-and-pay')
-  async tokenizeAndPay(
-    @Body()
-    paymentData: {
-      merchantId: string;
-      amount: number;
-      currency: string;
-      orderId: string;
-      customer: any;
-      card: {
-        number: string;
-        expirationMonth: string;
-        expirationYear: string;
-        securityCode: string;
-        holderName: string;
-      };
-      installments?: number;
-      capture?: boolean;
-      saveCard?: boolean;
-    },
-  ) {
+  async tokenizeAndPay(@Body() paymentData: MalgaPaymentRequest) {
     return this.malgaService.tokenizeAndPay(paymentData);
   }
 }

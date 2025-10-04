@@ -310,7 +310,7 @@ export class PaymentsService {
   }
 
   // MÉTODO AUXILIAR PARA VALIDAR PARCELAS
-  private async validateInstallmentValues(
+  async validateInstallmentValues(
     receivedTotal: number,
     installments: number,
     installmentData: any,
@@ -336,7 +336,7 @@ export class PaymentsService {
       // Validar dados recebidos do frontend
       const expectedCalculation =
         this.installmentsService.calculateInstallments({
-          totalValue: installmentData.original_value,
+          totalValue: installmentData.total_with_tax,
           maxInstallments: installments,
         });
 
@@ -667,6 +667,7 @@ export class PaymentsService {
     authorization_date?: Date;
     capture_date?: Date;
     reversed_amount?: number;
+    charge_id?: string;
   }) {
     return this.prisma.pagamento.create({
       data: {
@@ -684,6 +685,7 @@ export class PaymentsService {
         authorization_date: pagamentoData.authorization_date,
         capture_date: pagamentoData.capture_date,
         reversed_amount: pagamentoData.reversed_amount,
+        charge_id: pagamentoData.charge_id,
       },
     });
   }
