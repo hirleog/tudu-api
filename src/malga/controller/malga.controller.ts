@@ -29,7 +29,7 @@ export class MalgaController {
 
   // === TOKENIZATION ENDPOINTS ===
   @Post('tokens')
-  async createToken(@Body() createTokenDto: CreateTokenDto) {
+  async createToken(@Body() createTokenDto: any) {
     return this.malgaService.createToken(createTokenDto);
   }
 
