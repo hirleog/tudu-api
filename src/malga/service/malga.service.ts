@@ -61,7 +61,7 @@ export class MalgaService {
 
       return response.data;
     } catch (error) {
-      console.log('errorToken', error);
+      console.log('errorToken', createTokenDto.card);
 
       throw new HttpException(
         error.response?.data || 'Erro ao criar token',
