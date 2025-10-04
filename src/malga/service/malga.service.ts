@@ -40,6 +40,7 @@ export class MalgaService {
     console.log('X-Api-Key', this.apiKey);
     console.log('X-Client-Id', this.clientId);
     console.log('merchantId', this.merchantId);
+    console.log('apiUrl', this.apiUrl);
 
     return {
       'X-Api-Key': this.apiKey,
@@ -56,8 +57,12 @@ export class MalgaService {
           headers: this.getHeaders(),
         }),
       );
+      console.log('createTokenDto.card', createTokenDto.card);
+
       return response.data;
     } catch (error) {
+      console.log('errorToken', error);
+
       throw new HttpException(
         error.response?.data || 'Erro ao criar token',
         error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
@@ -366,6 +371,7 @@ export class MalgaService {
     try {
       // VALIDAÇÃO DAS PARCELAS (usando os novos campos)
       const installments = payload.paymentMethod.installments || 1;
+      console.log('installments', installments);
 
       // 1. Tokenização do cartão (usando os novos campos do payload)
       const tokenResponse = await this.createToken({
@@ -376,6 +382,8 @@ export class MalgaService {
           cardExpirationDate: payload.paymentSource.card.cardExpirationDate,
         },
       });
+
+      console.log('tokenResponse', tokenResponse);
 
       const tokenId = tokenResponse.tokenId;
 
