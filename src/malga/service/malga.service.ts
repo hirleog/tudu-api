@@ -52,17 +52,19 @@ export class MalgaService {
   // === TOKENIZATION METHODS ===
   async createToken(createTokenDto: CreateTokenDto) {
     try {
+      console.log('Enviando para Malga:', createTokenDto); // ← Debug
+
       const response = await firstValueFrom(
-        this.httpService.post(`${this.apiUrl}/tokens`, createTokenDto.card, {
-          headers: this.getHeaders(),
-        }),
+        this.httpService.post(
+          `${this.apiUrl}/tokens`,
+          createTokenDto, // ← Envie o DTO diretamente, sem envelope
+          { headers: this.getHeaders() },
+        ),
       );
-      console.log('createTokenDto.card', createTokenDto.card);
 
       return response.data;
     } catch (error) {
-      console.log('errorToken', createTokenDto.card);
-
+      console.log('Erro na tokenização:', error.response?.data);
       throw new HttpException(
         error.response?.data || 'Erro ao criar token',
         error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
@@ -373,19 +375,19 @@ export class MalgaService {
       const installments = payload.paymentMethod.installments || 1;
       console.log('installments', installments);
 
-      // 1. Tokenização do cartão (usando os novos campos do payload)
-      const tokenResponse = await this.createToken({
-        card: {
-          cardHolderName: payload.paymentSource.card.cardHolderName,
-          cardNumber: payload.paymentSource.card.cardNumber,
-          cardCvv: payload.paymentSource.card.cardCvv,
-          cardExpirationDate: payload.paymentSource.card.cardExpirationDate,
-        },
-      });
+      // // 1. Tokenização do cartão (usando os novos campos do payload)
+      // const tokenResponse = await this.createToken({
+      //   card: {
+      //     cardHolderName: payload.paymentSource.card.cardHolderName,
+      //     cardNumber: payload.paymentSource.card.cardNumber,
+      //     cardCvv: payload.paymentSource.card.cardCvv,
+      //     cardExpirationDate: payload.paymentSource.card.cardExpirationDate,
+      //   },
+      // });
 
-      console.log('tokenResponse', tokenResponse);
+      // console.log('tokenResponse', tokenResponse);
 
-      const tokenId = tokenResponse.tokenId;
+      // const tokenId = tokenResponse.tokenId;
 
       // 2. Montar payload no formato Malga CORRIGIDO
       const malgaPayload = {
@@ -417,7 +419,7 @@ export class MalgaService {
         },
         paymentSource: {
           sourceType: 'token',
-          tokenId: tokenId,
+          tokenId: payload.paymentSource.card.cardNumber,
           // "tokenId": "tok_2O7b2s7h8Q9r6t5Y4u3v1w2x3y"
         },
       };
