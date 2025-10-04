@@ -531,14 +531,15 @@ export class MalgaService {
 
       // 6. Retornar resposta de ERRO
       return {
-        success: false,
-        id: pagamentoRegistrado.id,
-        id_pagamento: errorDetails?.id,
-        id_pedido: payload.id_pedido,
-        error: errorDescription,
-        status: errorStatus,
-        error_code: errorDetails?.code || 'UNKNOWN_ERROR',
-        details: error.response?.data,
+        error
+        // success: false,
+        // id: pagamentoRegistrado.id,
+        // id_pagamento: errorDetails?.id,
+        // id_pedido: payload.id_pedido,
+        // error: errorDescription,
+        // status: errorStatus,
+        // error_code: errorDetails?.code || 'UNKNOWN_ERROR',
+        // details: error.response?.data,
       };
     }
   }
