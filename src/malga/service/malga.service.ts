@@ -406,49 +406,50 @@ export class MalgaService {
         paymentSource: {
           sourceType: 'token',
           tokenId: tokenId,
+          // "tokenId": "tok_2O7b2s7h8Q9r6t5Y4u3v1w2x3y"
         },
       };
 
-      // {
-      // appInfo PRIMEIRO (conforme exemplo que funciona)
-      //   appInfo: payload.appInfo || {
-      //     platform: {
-      //       integrator: 'tudu-manager',
-      //       name: 'TUDU Serviços',
-      //       version: '1.0',
-      //     },
-      //     device: {
-      //       name: 'Web',
-      //       version: '1.0',
-      //     },
-      //     system: {
-      //       name: 'TUDU Sistema',
-      //       version: '1.0',
-      //     },
-      //   },
-      //   merchantId: this.merchantId,
-      // amount: payload.amount, // Já validado e potencialmente ajustado
-      // currency: payload.currency || 'BRL',
-      // statementDescriptor: payload.statementDescriptor || 'TUDU',
-      // description: payload.description || `Pedido ${payload.id_pedido}`,
-      // capture: payload.capture !== undefined ? payload.capture : false,
-      // orderId: payload.orderId,
-      //   // Estrutura de paymentMethod da Malga
-      // paymentMethod: {
-      //   paymentType: payload.paymentMethod.paymentType,
-      //   installments: installments,
-      // },
-      //   // Estrutura de paymentSource da Malga - CORRIGIDO COM prefixo token_
-      //   paymentSource: {
-      //     sourceType: payload.paymentSource.sourceType,
-      // card: {
-      //   cardNumber: payload.paymentSource.card.cardNumbe, // ← CORREÇÃO: adicionar prefixo token_
-      //   cardCvv: payload.paymentSource.card.cardCvv,
-      //   cardExpirationDate: payload.paymentSource.card.cardExpirationDate,
-      //   cardHolderName: payload.paymentSource.card.cardHolderName,
-      // },
-      //   },
-      // }
+      {
+        // appInfo PRIMEIRO (conforme exemplo que funciona)
+        //   appInfo: payload.appInfo || {
+        //     platform: {
+        //       integrator: 'tudu-manager',
+        //       name: 'TUDU Serviços',
+        //       version: '1.0',
+        //     },
+        //     device: {
+        //       name: 'Web',
+        //       version: '1.0',
+        //     },
+        //     system: {
+        //       name: 'TUDU Sistema',
+        //       version: '1.0',
+        //     },
+        //   },
+        //   merchantId: this.merchantId,
+        // amount: payload.amount, // Já validado e potencialmente ajustado
+        // currency: payload.currency || 'BRL',
+        // statementDescriptor: payload.statementDescriptor || 'TUDU',
+        // description: payload.description || `Pedido ${payload.id_pedido}`,
+        // capture: payload.capture !== undefined ? payload.capture : false,
+        // orderId: payload.orderId,
+        //   // Estrutura de paymentMethod da Malga
+        // paymentMethod: {
+        //   paymentType: payload.paymentMethod.paymentType,
+        //   installments: installments,
+        // },
+        //   // Estrutura de paymentSource da Malga - CORRIGIDO COM prefixo token_
+        //   paymentSource: {
+        //     sourceType: payload.paymentSource.sourceType,
+        // card: {
+        //   cardNumber: payload.paymentSource.card.cardNumbe, // ← CORREÇÃO: adicionar prefixo token_
+        //   cardCvv: payload.paymentSource.card.cardCvv,
+        //   cardExpirationDate: payload.paymentSource.card.cardExpirationDate,
+        //   cardHolderName: payload.paymentSource.card.cardHolderName,
+        // },
+        //   },
+      }
 
       const response = await firstValueFrom(
         this.httpService.post(`${this.apiUrl}/charges`, malgaPayload, {
@@ -483,20 +484,21 @@ export class MalgaService {
 
       // 4. Retornar resposta de SUCESSO
       return {
-        success: true,
-        id: pagamentoRegistrado.id,
-        id_pagamento: responseData.id,
-        charge_id: responseData.id,
-        id_pedido: payload.id_pedido,
-        authorization_code: responseData.authorizationCode,
-        status: responseData.status,
-        status_description: responseData.status,
-        total_amount: responseData.amount,
-        installments: installments,
-        installment_amount:
-          payload.credit?.amount_installment ||
-          Math.round(payload.amount / installments),
-        capture: malgaPayload.capture,
+        responseData,
+        // success: true,
+        // id: pagamentoRegistrado.id,
+        // id_pagamento: responseData.id,
+        // charge_id: responseData.id,
+        // id_pedido: payload.id_pedido,
+        // authorization_code: responseData.authorizationCode,
+        // status: responseData.status,
+        // status_description: responseData.status,
+        // total_amount: responseData.amount,
+        // installments: installments,
+        // installment_amount:
+        //   payload.credit?.amount_installment ||
+        //   Math.round(payload.amount / installments),
+        // capture: malgaPayload.capture,
       };
     } catch (error) {
       console.error(
