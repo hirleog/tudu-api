@@ -339,6 +339,7 @@ export class CardsService {
       // Pega o charge_id do último pagamento (se existir)
       const ultimoPagamento = card.pagamentos[0];
       const charge_id = ultimoPagamento?.charge_id || null;
+      const total_amount = ultimoPagamento?.total_amount || null;
 
       return {
         id_pedido: card.id_pedido,
@@ -367,7 +368,10 @@ export class CardsService {
           complement: card.complement || null,
         },
         candidaturas: candidaturasFiltradas,
-        charge_id: charge_id, // ← NOVO CAMPO ADICIONADO
+        chargeInfos: {
+          charge_id: charge_id, // ← NOVO CAMPO ADICIONADO
+          total_amount: total_amount ? (total_amount / 100).toFixed(2) : null, // Convertendo para reais
+        },
         createdAt: this.adjustTimezone(card.createdAt),
         updatedAt: this.adjustTimezone(card.updatedAt),
       };
@@ -429,6 +433,7 @@ export class CardsService {
     // Pega o charge_id do último pagamento (se existir)
     const ultimoPagamento = card.pagamentos[0];
     const charge_id = ultimoPagamento?.charge_id || null;
+    const total_amount = ultimoPagamento?.total_amount || null;
 
     return {
       id_pedido: card.id_pedido,
@@ -457,7 +462,10 @@ export class CardsService {
       },
 
       candidaturas: candidaturasFiltradas,
-      charge_id: charge_id, // ← NOVO CAMPO ADICIONADO
+      chargeInfos: {
+        charge_id: charge_id, // ← NOVO CAMPO ADICIONADO
+        total_amount: total_amount ? (total_amount / 100).toFixed(2) : null, // Convertendo para reais
+      },
       createdAt: card.createdAt,
       updatedAt: card.updatedAt,
     };
