@@ -399,9 +399,44 @@ export class MalgaService {
     }
 
     try {
+      // MAPEIE o payload real para a estrutura esperada
+      const mappedPayload = {
+        id_pedido: payload.orderId, // orderId no payload real
+        amount: payload.amount,
+        currency: payload.currency,
+        orderId: payload.orderId,
+        // Mapeie paymentMethod da estrutura real
+        paymentMethod: {
+          paymentType: 'credit', // Defina como padrão ou extraia de algum campo
+          installments: payload.installments || 1, // installments está no root
+        },
+        // Mapeie paymentSource da estrutura real
+        paymentSource: {
+          sourceType: 'card',
+          card: {
+            cardNumber: payload.paymentSource.card.cardNumber,
+            cardExpirationDate: payload.paymentSource.card.cardExpirationDate,
+            cardCvv: payload.paymentSource.card.cardCvv,
+            cardHolderName: payload.paymentSource.card.cardHolderName,
+          },
+        },
+        // Campos adicionais que podem ser úteis
+        customer: payload.customer,
+        statementDescriptor: 'TUDU',
+        description: `Pedido ${payload.orderId}`,
+        capture: true, // Ou baseado em algum campo
+      };
+
+      console.log('Payload mapeado:', JSON.stringify(mappedPayload, null, 2));
+
+      // Agora use o payload mapeado
+      const installments = mappedPayload.paymentMethod.installments;
+      console.log('Installments:', installments);
+      console.log('id_pedido:', mappedPayload.id_pedido);
+
       // VALIDAÇÃO DAS PARCELAS (usando os novos campos)
-      const installments = payload.paymentMethod.installments || 1;
-      console.log('installmentsSSSSSSSSS', installments);
+      const installments2 = payload.paymentMethod.installments || 1;
+      console.log('installmentsSSSSSSSSS', installments2);
 
       // 2. Montar payload no formato Malga CORRIGIDO
       const malgaPayload = {
@@ -421,19 +456,19 @@ export class MalgaService {
           },
         },
         merchantId: this.merchantId,
-        amount: payload.amount,
-        currency: payload.currency || 'BRL',
-        statementDescriptor: payload.statementDescriptor || 'TUDU',
-        description: payload.description || `Pedido ${payload.id_pedido}`,
-        capture: payload.capture !== undefined ? payload.capture : false,
-        orderId: payload.orderId,
+        amount: mappedPayload.amount,
+        currency: mappedPayload.currency || 'BRL',
+        statementDescriptor: mappedPayload.statementDescriptor || 'TUDU',
+        description: mappedPayload.description || `Pedido ${mappedPayload.id_pedido}`,
+        capture: mappedPayload.capture !== undefined ? mappedPayload.capture : false,
+        orderId: mappedPayload.orderId,
         paymentMethod: {
-          paymentType: payload.paymentMethod.paymentType,
+          paymentType: mappedPayload.paymentMethod.paymentType,
           installments: installments,
         },
         paymentSource: {
           sourceType: 'token',
-          tokenId: payload.paymentSource.card.cardNumber,
+          tokenId: mappedPayload.paymentSource.card.cardNumber,
           // "tokenId": "tok_2O7b2s7h8Q9r6t5Y4u3v1w2x3y"
         },
       };
