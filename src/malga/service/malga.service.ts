@@ -37,11 +37,6 @@ export class MalgaService {
   }
 
   private getHeaders() {
-    console.log('X-Api-Key', this.apiKey);
-    console.log('X-Client-Id', this.clientId);
-    console.log('merchantId', this.merchantId);
-    console.log('apiUrl', this.apiUrl);
-
     return {
       'X-Api-Key': this.apiKey,
       'X-Client-Id': this.clientId,
@@ -249,11 +244,9 @@ export class MalgaService {
     }
   }
 
-  async cancelarCharge(payload: { amount?: string }, chargeId: string) {
+  async cancelarCharge(payload: { amount?: number }, chargeId: string) {
     try {
-      const amountToNumber = payload.amount
-        ? { amount: Number(payload.amount) }
-        : {};
+      const amountToNumber = payload.amount;
 
       const response = await firstValueFrom(
         this.httpService.post(
