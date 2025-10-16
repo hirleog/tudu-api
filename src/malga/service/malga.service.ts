@@ -368,77 +368,9 @@ export class MalgaService {
   }
 
   async tokenizeAndPay(payload: any) {
-    console.log('=== INICIANDO PROCESSAMENTO DE PAGAMENTO ===');
-    console.log('Payload COMPLETO recebido:', JSON.stringify(payload, null, 2));
-
-    // DEBUG CRÍTICO - verifique a estrutura do payload
-    console.log('id_pedido:', payload.id_pedido);
-    console.log('paymentMethod:', payload.paymentMethod);
-    console.log(
-      'paymentMethod.installments:',
-      payload.paymentMethod.installments,
-    );
-    console.log('amount:', payload?.amount);
-
     let pagamentoRegistrado = null;
 
-    if (!payload) {
-      throw new Error('Payload completo está undefined');
-    }
-
-    if (!payload.id_pedido) {
-      throw new Error(
-        `id_pedido é undefined. Payload: ${JSON.stringify(payload)}`,
-      );
-    }
-
-    if (!payload.paymentMethod) {
-      throw new Error(
-        `paymentMethod é undefined. Payload: ${JSON.stringify(payload)}`,
-      );
-    }
-
     try {
-      // MAPEIE o payload real para a estrutura esperada
-      // const mappedPayload = {
-      //   id_pedido: payload.orderId, // orderId no payload real
-      //   amount: payload.amount,
-      //   currency: payload.currency,
-      //   orderId: payload.orderId,
-      //   // Mapeie paymentMethod da estrutura real
-      //   paymentMethod: {
-      //     paymentType: 'credit', // Defina como padrão ou extraia de algum campo
-      //     installments: payload.installments || 1, // installments está no root
-      //   },
-      //   // Mapeie paymentSource da estrutura real
-      //   paymentSource: {
-      //     sourceType: 'card',
-      //     card: {
-      //       cardNumber: payload.paymentSource.card.cardNumber,
-      //       cardExpirationDate: payload.paymentSource.card.cardExpirationDate,
-      //       cardCvv: payload.paymentSource.card.cardCvv,
-      //       cardHolderName: payload.paymentSource.card.cardHolderName,
-      //     },
-      //   },
-      //   // Campos adicionais que podem ser úteis
-      //   customer: payload.customer,
-      //   statementDescriptor: 'TUDU',
-      //   description: `Pedido ${payload.orderId}`,
-      //   capture: true, // Ou baseado em algum campo
-      // };
-
-      // console.log('Payload mapeado:', JSON.stringify(mappedPayload, null, 2));
-
-      // // Agora use o payload mapeado
-      // const installments = mappedPayload.paymentMethod.installments;
-      // console.log('Installments:', installments);
-      // console.log('id_pedido:', mappedPayload.id_pedido);
-
-      // VALIDAÇÃO DAS PARCELAS (usando os novos campos)
-      const installments2 = payload.paymentMethod.installments || 1;
-      console.log('installmentsSSSSSSSSS', installments2);
-
-      // 2. Montar payload no formato Malga CORRIGIDO
       const malgaPayload = {
         appInfo: {
           platform: {
@@ -469,11 +401,8 @@ export class MalgaService {
         paymentSource: {
           sourceType: 'token',
           tokenId: payload.paymentSource.card.cardNumber,
-          // "tokenId": "tok_2O7b2s7h8Q9r6t5Y4u3v1w2x3y"
         },
       };
-
-      console.log('payload malga', malgaPayload);
 
       const response = await firstValueFrom(
         this.httpService.post(`${this.apiUrl}/charges`, malgaPayload, {
@@ -491,9 +420,10 @@ export class MalgaService {
         origin_amount: payload.originAmount, // valor sem juros
         status: responseData.status,
         auth_code: responseData.authorizationCode,
-        response_description: payload.capture
-          ? 'Pagamento realizado com sucesso'
-          : 'Pré-autorização realizada com sucesso',
+        response_description:
+          payload.status === 'authorized'
+            ? 'Pagamento realizado com sucesso'
+            : 'Pré-autorização realizada com sucesso',
         installments: payload.installments,
         installments_amount:
           payload.credit?.amount_installment ||
@@ -539,17 +469,8 @@ export class MalgaService {
         host: 'MALGA',
       });
 
-      // 6. Retornar resposta de ERRO
       return {
         error,
-        // success: false,
-        // id: pagamentoRegistrado.id,
-        // id_pagamento: errorDetails?.id,
-        // id_pedido: payload.id_pedido,
-        // error: errorDescription,
-        // status: errorStatus,
-        // error_code: errorDetails?.code || 'UNKNOWN_ERROR',
-        // details: error.response?.data,
       };
     }
   }
