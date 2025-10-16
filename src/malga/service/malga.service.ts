@@ -501,20 +501,6 @@ export class MalgaService {
       // 4. Retornar resposta de SUCESSO
       return {
         responseData,
-        // success: true,
-        // id: pagamentoRegistrado.id,
-        // id_pagamento: responseData.id,
-        // charge_id: responseData.id,
-        // id_pedido: payload.id_pedido,
-        // authorization_code: responseData.authorizationCode,
-        // status: responseData.status,
-        // status_description: responseData.status,
-        // total_amount: responseData.amount,
-        // installments: installments,
-        // installment_amount:
-        //   payload.credit?.amount_installment ||
-        //   Math.round(payload.amount / installments),
-        // capture: malgaPayload.capture,
       };
     } catch (error) {
       console.error(

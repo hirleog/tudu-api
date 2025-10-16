@@ -159,7 +159,7 @@ model Pagamento {
   updated_at           DateTime  @default(now()) @updatedAt
 
   // Relações
-  Card Card @relation(fields: [id_pedido], references: [id_pedido])
+  Card Card? @relation(fields: [id_pedido], references: [id_pedido])
 
   @@map("pagamentos")
 }
