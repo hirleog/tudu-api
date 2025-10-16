@@ -372,11 +372,11 @@ export class MalgaService {
     console.log('Payload COMPLETO recebido:', JSON.stringify(payload, null, 2));
 
     // DEBUG CRÍTICO - verifique a estrutura do payload
-    console.log('id_pedido:', payload?.id_pedido);
-    console.log('paymentMethod:', payload?.paymentMethod);
+    console.log('id_pedido:', payload.id_pedido);
+    console.log('paymentMethod:', payload.paymentMethod);
     console.log(
       'paymentMethod.installments:',
-      payload?.paymentMethod?.installments,
+      payload.paymentMethod.installments,
     );
     console.log('amount:', payload?.amount);
 

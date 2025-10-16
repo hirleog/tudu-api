@@ -1,12 +1,15 @@
 // No controller ou em um arquivo de tipos
 export interface MalgaPaymentRequest {
-  merchantId: string;
+  merchantId?: string;
   amount: number;
+  originAmount?: number;
+
   currency: string;
   statementDescriptor: string;
   description: string;
   capture: boolean;
   orderId: string;
+
   paymentMethod: {
     paymentType: 'credit' | 'debit';
     installments: number;
@@ -54,17 +57,9 @@ export interface MalgaPaymentRequest {
     };
   };
   id_pedido: string;
-  credit?: {
-    number_installments?: number;
-    amount_installment?: number;
-    soft_descriptor?: string;
-    transaction_type?: string;
-  };
   installment_data?: {
     total_with_tax?: number;
     installments?: number;
     installment_value?: number;
   };
-  totalAmount?: number;
-  originAmount?: number;
 }
