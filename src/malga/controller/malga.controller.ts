@@ -102,7 +102,7 @@ export class MalgaController {
 
   @Post('charges/:id/void')
   async cancelCharge(
-    @Body() payload: { amount: string },
+    @Body() payload: { amount: number },
     @Param('id') chargeId: string,
   ) {
     return this.malgaService.cancelarCharge(payload, chargeId);
