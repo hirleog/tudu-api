@@ -147,7 +147,7 @@ export class MalgaController {
   }
 
   @Post('payments/tokenize-and-pay')
-  async tokenizeAndPay(@Body() paymentData: any) {
+  async tokenizeAndPay(@Body() paymentData: MalgaPaymentRequest) {
     return this.malgaService.tokenizeAndPay(paymentData);
   }
 }
