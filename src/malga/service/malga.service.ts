@@ -368,26 +368,40 @@ export class MalgaService {
   }
 
   async tokenizeAndPay(payload: any) {
+    console.log('=== INICIANDO PROCESSAMENTO DE PAGAMENTO ===');
+    console.log('Payload COMPLETO recebido:', JSON.stringify(payload, null, 2));
+
+    // DEBUG CRÍTICO - verifique a estrutura do payload
+    console.log('id_pedido:', payload?.id_pedido);
+    console.log('paymentMethod:', payload?.paymentMethod);
+    console.log(
+      'paymentMethod.installments:',
+      payload?.paymentMethod?.installments,
+    );
+    console.log('amount:', payload?.amount);
+
     let pagamentoRegistrado = null;
+
+    if (!payload) {
+      throw new Error('Payload completo está undefined');
+    }
+
+    if (!payload.id_pedido) {
+      throw new Error(
+        `id_pedido é undefined. Payload: ${JSON.stringify(payload)}`,
+      );
+    }
+
+    if (!payload.paymentMethod) {
+      throw new Error(
+        `paymentMethod é undefined. Payload: ${JSON.stringify(payload)}`,
+      );
+    }
 
     try {
       // VALIDAÇÃO DAS PARCELAS (usando os novos campos)
       const installments = payload.paymentMethod.installments || 1;
-      console.log('installments', installments);
-
-      // // 1. Tokenização do cartão (usando os novos campos do payload)
-      // const tokenResponse = await this.createToken({
-      //   card: {
-      //     cardHolderName: payload.paymentSource.card.cardHolderName,
-      //     cardNumber: payload.paymentSource.card.cardNumber,
-      //     cardCvv: payload.paymentSource.card.cardCvv,
-      //     cardExpirationDate: payload.paymentSource.card.cardExpirationDate,
-      //   },
-      // });
-
-      // console.log('tokenResponse', tokenResponse);
-
-      // const tokenId = tokenResponse.tokenId;
+      console.log('installmentsSSSSSSSSS', installments);
 
       // 2. Montar payload no formato Malga CORRIGIDO
       const malgaPayload = {
@@ -423,47 +437,6 @@ export class MalgaService {
           // "tokenId": "tok_2O7b2s7h8Q9r6t5Y4u3v1w2x3y"
         },
       };
-
-      {
-        // appInfo PRIMEIRO (conforme exemplo que funciona)
-        //   appInfo: payload.appInfo || {
-        //     platform: {
-        //       integrator: 'tudu-manager',
-        //       name: 'TUDU Serviços',
-        //       version: '1.0',
-        //     },
-        //     device: {
-        //       name: 'Web',
-        //       version: '1.0',
-        //     },
-        //     system: {
-        //       name: 'TUDU Sistema',
-        //       version: '1.0',
-        //     },
-        //   },
-        //   merchantId: this.merchantId,
-        // amount: payload.amount, // Já validado e potencialmente ajustado
-        // currency: payload.currency || 'BRL',
-        // statementDescriptor: payload.statementDescriptor || 'TUDU',
-        // description: payload.description || `Pedido ${payload.id_pedido}`,
-        // capture: payload.capture !== undefined ? payload.capture : false,
-        // orderId: payload.orderId,
-        //   // Estrutura de paymentMethod da Malga
-        // paymentMethod: {
-        //   paymentType: payload.paymentMethod.paymentType,
-        //   installments: installments,
-        // },
-        //   // Estrutura de paymentSource da Malga - CORRIGIDO COM prefixo token_
-        //   paymentSource: {
-        //     sourceType: payload.paymentSource.sourceType,
-        // card: {
-        //   cardNumber: payload.paymentSource.card.cardNumbe, // ← CORREÇÃO: adicionar prefixo token_
-        //   cardCvv: payload.paymentSource.card.cardCvv,
-        //   cardExpirationDate: payload.paymentSource.card.cardExpirationDate,
-        //   cardHolderName: payload.paymentSource.card.cardHolderName,
-        // },
-        //   },
-      }
 
       console.log('payload malga', malgaPayload);
 
