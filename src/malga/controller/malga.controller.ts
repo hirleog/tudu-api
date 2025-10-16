@@ -100,6 +100,14 @@ export class MalgaController {
     return this.malgaService.updateCharge(id, updateChargeDto);
   }
 
+  @Post('charges/:id/void')
+  async cancelCharge(
+    @Body() payload: { amount: string },
+    @Param('id') chargeId: string,
+  ) {
+    return this.malgaService.cancelarCharge(payload, chargeId);
+  }
+
   // === PAYMENTS ENDPOINTS ===
   @Post('payments')
   async createPayment(@Body() createPaymentDto: CreatePaymentDto) {

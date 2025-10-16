@@ -194,6 +194,10 @@ export class CardsService {
       include: {
         Candidatura: true,
         imagens: true,
+        pagamentos: {
+          orderBy: { created_at: 'desc' }, // Pega o mais recente primeiro
+          take: 1, // Pega apenas o último pagamento
+        },
       },
       orderBy: {
         updatedAt: 'desc',
@@ -332,6 +336,10 @@ export class CardsService {
           ? todasCandidaturas.filter((c) => c.status !== 'recusado')
           : todasCandidaturas.filter((c) => c.prestador_id === prestadorId);
 
+      // Pega o charge_id do último pagamento (se existir)
+      const ultimoPagamento = card.pagamentos[0];
+      const charge_id = ultimoPagamento?.charge_id || null;
+
       return {
         id_pedido: card.id_pedido,
         id_cliente: card.id_cliente.toString(),
@@ -359,6 +367,7 @@ export class CardsService {
           complement: card.complement || null,
         },
         candidaturas: candidaturasFiltradas,
+        charge_id: charge_id, // ← NOVO CAMPO ADICIONADO
         createdAt: this.adjustTimezone(card.createdAt),
         updatedAt: this.adjustTimezone(card.updatedAt),
       };
@@ -390,6 +399,10 @@ export class CardsService {
       include: {
         Candidatura: true,
         imagens: true,
+        pagamentos: {
+          orderBy: { created_at: 'desc' }, // Pega o mais recente primeiro
+          take: 1, // Pega apenas o último pagamento
+        },
       },
     });
 
@@ -408,11 +421,14 @@ export class CardsService {
 
     const candidaturasFiltradas =
       id_cliente !== undefined
-        ? todasCandidaturas.filter((c: any) => c.status !== 'recusado') // cliente não vê recusadas
+        ? todasCandidaturas.filter((c: any) => c.status !== 'recusado')
         : todasCandidaturas.filter(
-            // prestador vê apenas sua candidatura, inclusive se for recusada
             (c: any) => c.prestador_id === Number(id_prestador),
           );
+
+    // Pega o charge_id do último pagamento (se existir)
+    const ultimoPagamento = card.pagamentos[0];
+    const charge_id = ultimoPagamento?.charge_id || null;
 
     return {
       id_pedido: card.id_pedido,
@@ -439,7 +455,9 @@ export class CardsService {
         number: card.number,
         complement: card.complement || null,
       },
+
       candidaturas: candidaturasFiltradas,
+      charge_id: charge_id, // ← NOVO CAMPO ADICIONADO
       createdAt: card.createdAt,
       updatedAt: card.updatedAt,
     };
@@ -580,13 +598,13 @@ export class CardsService {
       }
 
       // Verificar permissões
-      const isOwner = card.id_cliente === id_cliente;
+      // const isOwner = card.id_cliente === id_cliente;
 
-      if (!isOwner) {
-        throw new ForbiddenException(
-          'Você não tem permissão para cancelar este pedido',
-        );
-      }
+      // if (!isOwner) {
+      //   throw new ForbiddenException(
+      //     'Você não tem permissão para cancelar este pedido',
+      //   );
+      // }
 
       // Verificar se já está cancelado
       if (card.status_pedido === 'cancelado') {
@@ -598,37 +616,6 @@ export class CardsService {
         throw new ForbiddenException(
           'Pedidos finalizados não podem ser cancelados',
         );
-      }
-
-      // ✅ 1. Cancelar pagamentos aprovados (JÁ ATUALIZA NO BANCO)
-      const cancelamentoPagamentos = [];
-      for (const pagamento of card.pagamentos) {
-        try {
-          const resultado =
-            await this.paymentsService.cancelarPagamentoCompleto(
-              pagamento.id_pagamento,
-              pagamento.total_amount,
-            );
-
-          if (!resultado.success) {
-            throw new Error(
-              `Falha ao cancelar pagamento ${pagamento.id_pagamento}: ${resultado.error}`,
-            );
-          }
-
-          // O paymentsService.cancelarPagamentoCompleto já atualizou o banco
-
-          cancelamentoPagamentos.push({
-            id_pagamento: pagamento.id_pagamento,
-            success: true,
-            cancel_amount: pagamento.total_amount,
-            message: 'Cancelado com sucesso',
-          });
-        } catch (error) {
-          throw new Error(
-            `Falha ao cancelar pagamento ${pagamento.id_pagamento}: ${error.message}`,
-          );
-        }
       }
 
       // ✅ 2. Cancelar todas as candidaturas relacionadas ao card
@@ -678,7 +665,6 @@ export class CardsService {
         status: 'success',
         message: 'Pedido cancelado com sucesso',
         card: updatedCard,
-        pagamentosCancelados: cancelamentoPagamentos,
       };
     });
   }

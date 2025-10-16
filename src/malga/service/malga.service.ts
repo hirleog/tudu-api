@@ -249,6 +249,41 @@ export class MalgaService {
     }
   }
 
+  async cancelarCharge(payload: { amount?: string }, chargeId: string) {
+    try {
+      const amountToNumber = payload.amount
+        ? { amount: Number(payload.amount) }
+        : {};
+
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.apiUrl}/charges/${chargeId}/void`,
+          amountToNumber,
+          {
+            headers: this.getHeaders(),
+          },
+        ),
+      );
+
+      console.log('Resposta do cancelamento:', response.data);
+
+      return {
+        data: response.data,
+      };
+    } catch (error) {
+      console.error('Erro ao cancelar charge:', {
+        chargeId,
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+      });
+
+      throw new HttpException(
+        ' Erro ao cancelar pagamento',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   // === PAYMENTS METHODS ===
   async createPayment(createPaymentDto: CreatePaymentDto) {
     try {
@@ -391,9 +426,9 @@ export class MalgaService {
         amount: payload.amount,
         currency: payload.currency || 'BRL',
         statementDescriptor: payload.statementDescriptor || 'TUDU',
-        description: payload.description || `Pedido ${payload.id_pedido}`,
+        description: `Pedido ${payload.id_pedido}`,
         capture: payload.capture !== undefined ? payload.capture : false,
-        orderId: payload.orderId,
+        orderId: payload.id_pedido,
         paymentMethod: {
           paymentType: payload.paymentMethod.paymentType,
           installments: payload.paymentMethod.installments,
