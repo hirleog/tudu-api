@@ -252,7 +252,9 @@ export class MalgaService {
       const malgaPayload: any = {};
 
       if (payload.amount) {
-        malgaPayload.amount = payload.amount.toString(); // Malga geralmente espera string
+        // ✅ CONVERTE para centavos (multiplica por 100)
+        malgaPayload.amount = Math.round(payload.amount * 100).toString();
+        console.log(`Conversão: ${payload.amount} → ${malgaPayload.amount}`);
       }
 
       console.log('Payload para Malga:', malgaPayload);
@@ -260,7 +262,7 @@ export class MalgaService {
       const response = await firstValueFrom(
         this.httpService.post(
           `${this.apiUrl}/charges/${chargeId}/void`,
-          malgaPayload, // ✅ CORRETO: Envia objeto JSON
+          malgaPayload,
           {
             headers: this.getHeaders(),
             timeout: 30000,
@@ -280,16 +282,7 @@ export class MalgaService {
         payload,
         error: error.response?.data || error.message,
         status: error.response?.status,
-        url: `${this.apiUrl}/charges/${chargeId}/void`,
       });
-
-      // Log mais específico para debugging
-      if (error.response?.data?.error?.details) {
-        console.error(
-          'Detalhes do erro da Malga:',
-          error.response.data.error.details,
-        );
-      }
 
       throw new HttpException(
         error.response?.data?.error?.message || 'Erro ao cancelar pagamento',
