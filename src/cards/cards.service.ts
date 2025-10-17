@@ -871,6 +871,14 @@ export class CardsService {
         },
       });
 
+      // disponibiliza o card novamente apos remoção da candidatura
+      await prisma.card.update({
+        where: { id_pedido },
+        data: {
+          status_pedido: 'publicado',
+          updatedAt: new Date(),
+        },
+      });
       // Notificar via WebSocket sobre a atualização
       // try {
       //   await this.eventsGateway.notificarAtualizacao(candidatura.Card);
