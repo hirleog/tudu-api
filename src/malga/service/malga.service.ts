@@ -253,7 +253,7 @@ export class MalgaService {
 
       if (payload.amount) {
         // ✅ CONVERTE para centavos (multiplica por 100)
-        malgaPayload.amount = Math.round(payload.amount * 100).toString();
+        malgaPayload.amount = Math.round(payload.amount * 100);
         console.log(`Conversão: ${payload.amount} → ${malgaPayload.amount}`);
       }
 
