@@ -246,14 +246,24 @@ export class MalgaService {
 
   async cancelarCharge(payload: { amount?: number }, chargeId: string) {
     try {
-      const amountToNumber = payload.amount;
+      console.log('Iniciando cancelamento da charge:', { chargeId, payload });
+
+      // Constrói o payload corretamente para a Malga
+      const malgaPayload: any = {};
+
+      if (payload.amount) {
+        malgaPayload.amount = payload.amount.toString(); // Malga geralmente espera string
+      }
+
+      console.log('Payload para Malga:', malgaPayload);
 
       const response = await firstValueFrom(
         this.httpService.post(
           `${this.apiUrl}/charges/${chargeId}/void`,
-          amountToNumber,
+          malgaPayload, // ✅ CORRETO: Envia objeto JSON
           {
             headers: this.getHeaders(),
+            timeout: 30000,
           },
         ),
       );
@@ -261,18 +271,29 @@ export class MalgaService {
       console.log('Resposta do cancelamento:', response.data);
 
       return {
+        success: true,
         data: response.data,
       };
     } catch (error) {
-      console.error('Erro ao cancelar charge:', {
+      console.error('Erro detalhado ao cancelar charge:', {
         chargeId,
+        payload,
         error: error.response?.data || error.message,
         status: error.response?.status,
+        url: `${this.apiUrl}/charges/${chargeId}/void`,
       });
 
+      // Log mais específico para debugging
+      if (error.response?.data?.error?.details) {
+        console.error(
+          'Detalhes do erro da Malga:',
+          error.response.data.error.details,
+        );
+      }
+
       throw new HttpException(
-        ' Erro ao cancelar pagamento',
-        HttpStatus.INTERNAL_SERVER_ERROR,
+        error.response?.data?.error?.message || 'Erro ao cancelar pagamento',
+        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
