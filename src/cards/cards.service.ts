@@ -484,6 +484,7 @@ export class CardsService {
     const updatedCard = await this.prisma.card.update({
       where: { id_pedido },
       data: {
+        id_prestador: updateCardDto.status_pedido === 'pendente' ? updateCardDto.candidaturas[0].prestador_id : null,
         status_pedido:
           updateCardDto.status_pedido ?? existingCard.status_pedido,
         categoria: updateCardDto.categoria ?? existingCard.categoria,
