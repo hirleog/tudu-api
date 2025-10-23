@@ -13,6 +13,7 @@ import {
   UpdateChargeDto,
 } from '../dto/create-create.dto';
 import { PaymentsService } from 'src/getnet/payments/payments.service';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class MalgaService {
@@ -25,6 +26,7 @@ export class MalgaService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private paymentsService: PaymentsService,
+    private prisma: PrismaService,
   ) {
     this.apiUrl =
       process.env.NODE_ENV !== 'production'
@@ -246,18 +248,13 @@ export class MalgaService {
 
   async cancelarCharge(payload: { amount?: number }, chargeId: string) {
     try {
-      console.log('Iniciando cancelamento da charge:', { chargeId, payload });
-
       // Constrói o payload corretamente para a Malga
       const malgaPayload: any = {};
 
       if (payload.amount) {
         // ✅ CONVERTE para centavos (multiplica por 100)
         malgaPayload.amount = Math.round(payload.amount * 100);
-        console.log(`Conversão: ${payload.amount} → ${malgaPayload.amount}`);
       }
-
-      console.log('Payload para Malga:', malgaPayload);
 
       const response = await firstValueFrom(
         this.httpService.post(
@@ -270,7 +267,33 @@ export class MalgaService {
         ),
       );
 
-      console.log('Resposta do cancelamento:', response.data);
+      // ✅ ATUALIZAR O BANCO DE DADOS APÓS SUCESSO NO ESTORNO
+      try {
+        // 1. Encontrar o pagamento pelo charge_id
+        const pagamento = await this.prisma.pagamento.findFirst({
+          where: { charge_id: chargeId },
+          include: { Card: true },
+        });
+
+        if (pagamento) {
+          // 2. Atualizar o pagamento com o valor estornado
+          await this.prisma.pagamento.update({
+            where: { id: pagamento.id },
+            data: {
+              reversed_amount: malgaPayload.amount || pagamento.total_amount, // Usa o amount do payload ou o total
+              status: 'voided', // Atualiza o status do pagamento
+            },
+          });
+        } else {
+          console.warn('Pagamento não encontrado para charge_id:', chargeId);
+        }
+      } catch (dbError) {
+        console.error(
+          'Erro ao atualizar banco de dados após estorno:',
+          dbError,
+        );
+        // Não lançar erro aqui para não comprometer o response do estorno
+      }
 
       return {
         success: true,
