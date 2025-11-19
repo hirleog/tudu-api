@@ -19,6 +19,7 @@ import { ImagemModule } from './imagem/imagem.module';
 import { PrestadorModule } from './prestador/prestador.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { MalgaModule } from './malga/malga.module';
+import { PagSeguroModule } from './pagseguro/pagseguro.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { MalgaModule } from './malga/malga.module';
     AuthModule,
     MalgaModule,
     ExperienciaModule,
+    PagSeguroModule,
     ConfigModule.forRoot({
       isGlobal: true, // para estar disponível em toda a aplicação
     }),

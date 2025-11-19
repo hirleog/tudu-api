@@ -142,19 +142,27 @@ model Pagamento {
   id                   Int       @id @default(autoincrement())
   id_pagamento         String?
   id_pedido            String
-  total_amount         Int // Valor pago
-  origin_amount        Int // Valor pago
+  total_amount         Int // Valor pago em centavos
+  origin_amount        Int // Valor original em centavos
   auth_code            String? // Código de autorização
-  status               String // captured, denied, cancelled, pending, etc.
+  status               String // captured, denied, cancelled, pending, paid, expired
   response_description String? // Descrição da resposta
-  type                 String? // Tipo de pagamento
-  host                 String? // Adquirente
+  type                 String? // Tipo de pagamento (pix, credit_card, etc)
+  host                 String? // Adquirente (pagseguro, malga, etc)
   installments         Int? // Número de parcelas
   installments_amount  Int? // Valor por parcela
   authorization_date   DateTime? // Data de autorização
   capture_date         DateTime? // Data de captura
   reversed_amount      Int? // Valor estornado
-  charge_id            String? // ID da cobrança na malga
+  charge_id            String? // ID da cobrança no gateway
+  // NOVOS CAMPOS PARA PIX
+  qr_code              String? // QR Code do PIX
+  qr_code_image        String? // URL da imagem do QR Code
+  encrypted_value      String? // Valor encriptado do PIX
+  expiration_date      DateTime? // Data de expiração do PIX
+  paid_at              DateTime? // Data de confirmação do pagamento
+  reference_id         String? // ID de referência no seu sistema
+  // FIM DOS NOVOS CAMPOS
   created_at           DateTime  @default(now())
   updated_at           DateTime  @default(now()) @updatedAt
 
