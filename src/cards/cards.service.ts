@@ -2,25 +2,26 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { CreateCardDto } from './dto/create-card.dto';
-import { card } from './entities/card.entity';
-import { UpdateCardDto } from './dto/update-card.dto';
 import { customAlphabet } from 'nanoid';
 import { EventsGateway } from 'src/events/events.gateway';
-import { Card } from './entities/showcase-card.entity';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { WApiService } from 'src/wapi/service/wapi.service';
 import { CancelCardDto } from './dto/cancel-card.dto';
-import { PaymentsService } from 'src/getnet/payments/payments.service';
+import { CreateCardDto } from './dto/create-card.dto';
+import { UpdateCardDto } from './dto/update-card.dto';
+import { card } from './entities/card.entity';
+import { Card } from './entities/showcase-card.entity';
 @Injectable()
 export class CardsService {
-  private cards: card[] = []; // Simulação de banco de dados em memória
+  private readonly logger = new Logger(CardsService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsGateway: EventsGateway,
-    private readonly paymentsService: PaymentsService,
+    private readonly wApiService: WApiService, // ← Injete o WApiService
   ) {}
 
   async create(createCardDto: CreateCardDto, imagensUrl?: string[]) {
@@ -51,17 +52,75 @@ export class CardsService {
       cardData.imagens = {
         create: imagensUrl.map((url, index) => ({
           url,
-          nome: `Imagem ${index + 1}`, // obrigatório, colocar algo aqui
+          nome: `Imagem ${index + 1}`,
         })),
       };
     }
 
+    // Cria o card
     const novoCard = await this.prisma.card.create({
       data: cardData,
       include: { imagens: true },
     });
 
+    // 🔔 ENVIO DO WHATSAPP APÓS SUCESSO
+    await this.enviarNotificacaoWhatsApp(novoCard);
+
     return novoCard;
+  }
+
+  private async enviarNotificacaoWhatsApp(card: any) {
+    try {
+      // Busca o telefone do cliente
+      const cliente = await this.prisma.cliente.findUnique({
+        where: { id_cliente: card.id_cliente },
+        select: { telefone: true, nome: true },
+      });
+
+      if (!cliente?.telefone) {
+        this.logger.warn(
+          `Cliente ${card.id_cliente} não tem telefone cadastrado`,
+        );
+        return;
+      }
+
+      // Formata a mensagem
+      const mensagem = this.formatarMensagemCard(card, cliente.nome);
+
+      // Envia via W-API
+      const payload = {
+        phone: cliente.telefone,
+        message: mensagem,
+        delayMessage: 10,
+      };
+
+      await this.wApiService.sendMessage(payload);
+
+      this.logger.log(`Notificação WhatsApp enviada para ${cliente.telefone}`);
+    } catch (error) {
+      // Não quebra o fluxo principal se o WhatsApp falhar
+      this.logger.error('Erro ao enviar WhatsApp:', error.message);
+    }
+  }
+
+  private formatarMensagemCard(card: any, nomeCliente: string): string {
+    return `✅ *SEU PEDIDO FOI CRIADO COM SUCESSO!*
+
+👤 *Cliente:* ${nomeCliente}
+📦 *Pedido:* #${card.id_pedido}
+🗂️ *Categoria:* ${card.categoria}
+📋 *Serviço:* ${card.serviceDescription}
+💵 *Valor:* R$ ${card.valor}
+📍 *Local:* ${card.street}, ${card.number} - ${card.neighborhood}
+🏙️ *Cidade:* ${card.city}/${card.state}
+
+⏰ *Horário Preferencial:* ${card.horario_preferencial}
+
+🔢 *Código de Confirmação:* ${card.codigo_confirmacao}
+
+_Status do pedido: ${card.status_pedido}_
+
+Obrigado por utilizar nossos serviços!`;
   }
 
   async findAll(
@@ -472,6 +531,8 @@ export class CardsService {
   }
 
   async update(id_pedido: string, updateCardDto: UpdateCardDto) {
+    let prestador: any;
+
     const existingCard = await this.prisma.card.findUnique({
       where: { id_pedido },
       include: { Candidatura: true },
@@ -484,7 +545,10 @@ export class CardsService {
     const updatedCard = await this.prisma.card.update({
       where: { id_pedido },
       data: {
-        id_prestador: updateCardDto.status_pedido === 'pendente' ? updateCardDto.candidaturas[0].prestador_id : null,
+        id_prestador:
+          updateCardDto.status_pedido === 'pendente'
+            ? updateCardDto.candidaturas[0].prestador_id
+            : null,
         status_pedido:
           updateCardDto.status_pedido ?? existingCard.status_pedido,
         categoria: updateCardDto.categoria ?? existingCard.categoria,
@@ -495,7 +559,7 @@ export class CardsService {
           existingCard.horario_preferencial,
         codigo_confirmacao:
           updateCardDto.codigo_confirmacao ?? existingCard.codigo_confirmacao,
-        data_finalizacao: updateCardDto.data_finalizacao ?? null, // Não atualiza se não for fornecido
+        data_finalizacao: updateCardDto.data_finalizacao ?? null,
         cep: updateCardDto.cep ?? existingCard.cep,
         street: updateCardDto.street ?? existingCard.street,
         neighborhood: updateCardDto.neighborhood ?? existingCard.neighborhood,
@@ -521,6 +585,7 @@ export class CardsService {
 
     // Novo controle: flag para saber se houve nova candidatura
     let houveNovaCandidatura = false;
+    let novasCandidaturasCount = 0;
 
     if (updateCardDto.candidaturas) {
       const candidaturaDtos = updateCardDto.candidaturas;
@@ -545,7 +610,19 @@ export class CardsService {
               data_candidatura: new Date(),
             },
           });
+          await this.enviarWhatsAppNovaCandidatura(
+            existingCard.id_cliente,
+            id_pedido,
+            prestador,
+            candidaturaDto,
+          );
         } else {
+          // 🔔 BUSCA DADOS DO PRESTADOR PARA A MENSAGEM
+          prestador = await this.prisma.prestador.findUnique({
+            where: { id_prestador: candidaturaDto.prestador_id },
+            select: { nome: true, sobrenome: true, avaliacao: true },
+          });
+
           await this.prisma.candidatura.create({
             data: {
               valor_negociado: candidaturaDto.valor_negociado,
@@ -563,8 +640,20 @@ export class CardsService {
 
           // Marca que houve ao menos uma nova candidatura
           houveNovaCandidatura = true;
+          novasCandidaturasCount++;
+
+          // 🔔 ENVIA WHATSAPP PARA CADA NOVA CANDIDATURA
+          if (houveNovaCandidatura) {
+            await this.enviarWhatsAppNovaCandidatura(
+              existingCard.id_cliente,
+              id_pedido,
+              prestador,
+              candidaturaDto,
+            );
+          }
         }
       }
+
       // ✅ Emite evento apenas uma vez se ao menos uma nova candidatura foi criada
       if (houveNovaCandidatura) {
         this.eventsGateway.emitirAlertaNovaCandidatura(id_pedido);
@@ -578,6 +667,82 @@ export class CardsService {
       where: { id_pedido },
       include: { Candidatura: true },
     });
+  }
+  private async enviarWhatsAppNovaCandidatura(
+    idCliente: number,
+    idPedido: string,
+    prestador: any,
+    candidaturaDto: any,
+  ) {
+    try {
+      // Busca telefone do cliente
+      const cliente = await this.prisma.cliente.findUnique({
+        where: { id_cliente: idCliente },
+        select: { telefone: true, nome: true },
+      });
+
+      if (!cliente?.telefone) {
+        this.logger.warn(
+          `Cliente ${idCliente} não tem telefone para notificação de candidatura`,
+        );
+        return;
+      }
+
+      // Formata mensagem
+      const mensagem = this.formatarMensagemNovaCandidatura(
+        idPedido,
+        prestador,
+        candidaturaDto,
+        cliente.nome,
+      );
+
+      const payload = {
+        phone: cliente.telefone,
+        message: mensagem,
+        delayMessage: 10,
+      };
+      await this.wApiService.sendMessage(payload);
+
+      this.logger.log(
+        `📨 Notificação de candidatura enviada para ${cliente.nome}`,
+      );
+    } catch (error) {
+      // Não quebra o fluxo principal
+      this.logger.error(
+        '❌ Erro ao enviar WhatsApp de candidatura:',
+        error.message,
+      );
+    }
+  }
+  private formatarMensagemNovaCandidatura(
+    idPedido: string,
+    prestador: any,
+    candidaturaDto: any,
+    nomeCliente: string,
+  ): string {
+    const baseUrl =
+      process.env.NODE_ENV === 'development'
+        ? 'http://localhost:4200'
+        : 'https://api.use-tudu.com.br';
+
+    const linkProposta = `${baseUrl}/home/budgets?id=${idPedido}&flow=publicado`;
+
+    return `🎯 *NOVA PROPOSTA RECEBIDA!*
+
+Olá ${nomeCliente}! Você recebeu uma nova proposta para seu pedido #${idPedido}.
+
+💰 *Valor Proposto:* R$ ${candidaturaDto.valor_negociado}
+⏰ *Horário Sugerido:* ${candidaturaDto.horario_negociado}
+
+📱 *ACESSE A PROPOSTA:*
+${linkProposta}
+
+💡 *Próximos passos:*
+• Clique no link acima para ver detalhes
+• Compare com outras propostas  
+• Aceite a que melhor atende suas necessidades
+
+_Estamos torcendo pelo melhor match!_`;
   }
 
   async cancel(
