@@ -6,11 +6,17 @@ import { EventsGateway } from 'src/events/events.gateway';
 import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
 import { PaymentsService } from 'src/getnet/payments/payments.service';
 import { InstallmentsService } from 'src/getnet/installments/service/installments.service';
+import { WApiModule } from 'src/wapi/wapi.module';
 
 @Module({
-  imports: [PrismaModule, CloudinaryModule],
+  imports: [PrismaModule, CloudinaryModule, WApiModule],
   controllers: [CardsController],
-  providers: [CardsService, EventsGateway, PaymentsService, InstallmentsService],
+  providers: [
+    CardsService,
+    EventsGateway,
+    PaymentsService,
+    InstallmentsService,
+  ],
   exports: [EventsGateway],
 })
 export class CardsModule {}
