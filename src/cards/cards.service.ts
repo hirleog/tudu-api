@@ -14,6 +14,7 @@ import { CreateCardDto } from './dto/create-card.dto';
 import { UpdateCardDto } from './dto/update-card.dto';
 import { card } from './entities/card.entity';
 import { Card } from './entities/showcase-card.entity';
+import { NotificationService } from 'src/wapi/service/notifications.service';
 @Injectable()
 export class CardsService {
   private readonly logger = new Logger(CardsService.name);
@@ -21,7 +22,8 @@ export class CardsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsGateway: EventsGateway,
-    private readonly wApiService: WApiService, // ← Injete o WApiService
+    private readonly wApiService: WApiService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async create(createCardDto: CreateCardDto, imagensUrl?: string[]) {
@@ -64,63 +66,9 @@ export class CardsService {
     });
 
     // 🔔 ENVIO DO WHATSAPP APÓS SUCESSO
-    await this.enviarNotificacaoWhatsApp(novoCard);
+    await this.notificationService.enviarNotificacaoCardCriado(novoCard);
 
     return novoCard;
-  }
-
-  private async enviarNotificacaoWhatsApp(card: any) {
-    try {
-      // Busca o telefone do cliente
-      const cliente = await this.prisma.cliente.findUnique({
-        where: { id_cliente: card.id_cliente },
-        select: { telefone: true, nome: true },
-      });
-
-      if (!cliente?.telefone) {
-        this.logger.warn(
-          `Cliente ${card.id_cliente} não tem telefone cadastrado`,
-        );
-        return;
-      }
-
-      // Formata a mensagem
-      const mensagem = this.formatarMensagemCard(card, cliente.nome);
-
-      // Envia via W-API
-      const payload = {
-        phone: cliente.telefone,
-        message: mensagem,
-        delayMessage: 10,
-      };
-
-      await this.wApiService.sendMessage(payload);
-
-      this.logger.log(`Notificação WhatsApp enviada para ${cliente.telefone}`);
-    } catch (error) {
-      // Não quebra o fluxo principal se o WhatsApp falhar
-      this.logger.error('Erro ao enviar WhatsApp:', error.message);
-    }
-  }
-
-  private formatarMensagemCard(card: any, nomeCliente: string): string {
-    return `✅ *SEU PEDIDO FOI CRIADO COM SUCESSO!*
-
-👤 *Cliente:* ${nomeCliente}
-📦 *Pedido:* #${card.id_pedido}
-🗂️ *Categoria:* ${card.categoria}
-📋 *Serviço:* ${card.serviceDescription}
-💵 *Valor:* R$ ${card.valor}
-📍 *Local:* ${card.street}, ${card.number} - ${card.neighborhood}
-🏙️ *Cidade:* ${card.city}/${card.state}
-
-⏰ *Horário Preferencial:* ${card.horario_preferencial}
-
-🔢 *Código de Confirmação:* ${card.codigo_confirmacao}
-
-_Status do pedido: ${card.status_pedido}_
-
-Obrigado por utilizar nossos serviços!`;
   }
 
   async findAll(
@@ -610,7 +558,7 @@ Obrigado por utilizar nossos serviços!`;
               data_candidatura: new Date(),
             },
           });
-          await this.enviarWhatsAppNovaCandidatura(
+          await this.notificationService.enviarNotificacaoNovaCandidatura(
             existingCard.id_cliente,
             id_pedido,
             prestador,
@@ -644,7 +592,7 @@ Obrigado por utilizar nossos serviços!`;
 
           // 🔔 ENVIA WHATSAPP PARA CADA NOVA CANDIDATURA
           if (houveNovaCandidatura) {
-            await this.enviarWhatsAppNovaCandidatura(
+            await this.notificationService.enviarNotificacaoNovaCandidatura(
               existingCard.id_cliente,
               id_pedido,
               prestador,
@@ -667,82 +615,6 @@ Obrigado por utilizar nossos serviços!`;
       where: { id_pedido },
       include: { Candidatura: true },
     });
-  }
-  private async enviarWhatsAppNovaCandidatura(
-    idCliente: number,
-    idPedido: string,
-    prestador: any,
-    candidaturaDto: any,
-  ) {
-    try {
-      // Busca telefone do cliente
-      const cliente = await this.prisma.cliente.findUnique({
-        where: { id_cliente: idCliente },
-        select: { telefone: true, nome: true },
-      });
-
-      if (!cliente?.telefone) {
-        this.logger.warn(
-          `Cliente ${idCliente} não tem telefone para notificação de candidatura`,
-        );
-        return;
-      }
-
-      // Formata mensagem
-      const mensagem = this.formatarMensagemNovaCandidatura(
-        idPedido,
-        prestador,
-        candidaturaDto,
-        cliente.nome,
-      );
-
-      const payload = {
-        phone: cliente.telefone,
-        message: mensagem,
-        delayMessage: 10,
-      };
-      await this.wApiService.sendMessage(payload);
-
-      this.logger.log(
-        `📨 Notificação de candidatura enviada para ${cliente.nome}`,
-      );
-    } catch (error) {
-      // Não quebra o fluxo principal
-      this.logger.error(
-        '❌ Erro ao enviar WhatsApp de candidatura:',
-        error.message,
-      );
-    }
-  }
-  private formatarMensagemNovaCandidatura(
-    idPedido: string,
-    prestador: any,
-    candidaturaDto: any,
-    nomeCliente: string,
-  ): string {
-    const baseUrl =
-      process.env.NODE_ENV === 'development'
-        ? 'http://localhost:4200'
-        : 'https://api.use-tudu.com.br';
-
-    const linkProposta = `${baseUrl}/home/budgets?id=${idPedido}&flow=publicado`;
-
-    return `🎯 *NOVA PROPOSTA RECEBIDA!*
-
-Olá ${nomeCliente}! Você recebeu uma nova proposta para seu pedido #${idPedido}.
-
-💰 *Valor Proposto:* R$ ${candidaturaDto.valor_negociado}
-⏰ *Horário Sugerido:* ${candidaturaDto.horario_negociado}
-
-📱 *ACESSE A PROPOSTA:*
-${linkProposta}
-
-💡 *Próximos passos:*
-• Clique no link acima para ver detalhes
-• Compare com outras propostas  
-• Aceite a que melhor atende suas necessidades
-
-_Estamos torcendo pelo melhor match!_`;
   }
 
   async cancel(
