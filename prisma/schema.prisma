@@ -225,7 +225,7 @@ model Notification {
 
 model UserSubscription {
   id               Int    @id @default(autoincrement())
-  subscriptionJson String
+  subscriptionJson String @db.Text
 
   clienteId   Int?
   prestadorId Int?
