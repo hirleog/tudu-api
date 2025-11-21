@@ -2,6 +2,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { WApiService } from 'src/wapi/service/wapi.service';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { ButtonActionDto } from 'src/wapi/dto/send-message.dto';
 
 @Injectable()
 export class NotificationService {
@@ -13,9 +14,9 @@ export class NotificationService {
   ) {}
 
   /**
-   * Envia notificação de card criado com sucesso
+   * Envia notificação de card criado com sucesso COM BOTÕES
    */
-  async enviarNotificacaoCardCriado(card: any): Promise<void> {
+  async enviarNotificacaoCardCriadoComBotoes(card: any): Promise<void> {
     try {
       const cliente = await this.prisma.cliente.findUnique({
         where: { id_cliente: card.id_cliente },
@@ -30,31 +31,36 @@ export class NotificationService {
       }
 
       const mensagem = this.formatarMensagemCardCriado(card, cliente.nome);
+      const buttonActions = this.criarBotoesCardCriado(card);
 
       const payload = {
         phone: cliente.telefone,
         message: mensagem,
+        buttonActions,
         delayMessage: 10,
       };
 
-      await this.wApiService.sendMessage(payload);
-      this.logger.log(`Notificação WhatsApp enviada para ${cliente.telefone}`);
+      await this.wApiService.sendButtonActions(payload);
+      this.logger.log(
+        `Notificação WhatsApp com botões enviada para ${cliente.telefone}`,
+      );
     } catch (error) {
       this.logger.error(
-        'Erro ao enviar WhatsApp de card criado:',
+        'Erro ao enviar WhatsApp com botões de card criado:',
         error.message,
       );
     }
   }
 
   /**
-   * Envia notificação de nova candidatura
+   * Envia notificação de nova candidatura COM BOTÕES
    */
-  async enviarNotificacaoNovaCandidatura(
+  async enviarNotificacaoNovaCandidaturaComBotoes(
     idCliente: number,
     idPedido: string,
     prestador: any,
     candidaturaDto: any,
+    cardDTO: any,
   ): Promise<void> {
     try {
       const cliente = await this.prisma.cliente.findUnique({
@@ -74,101 +80,132 @@ export class NotificationService {
         prestador,
         candidaturaDto,
         cliente.nome,
+        cardDTO,
       );
+
+      const buttonActions = this.criarBotoesNovaCandidatura(idPedido);
 
       const payload = {
         phone: cliente.telefone,
         message: mensagem,
+        buttonActions,
         delayMessage: 10,
       };
 
-      await this.wApiService.sendMessage(payload);
+      await this.wApiService.sendButtonActions(payload);
       this.logger.log(
-        `📨 Notificação de candidatura enviada para ${cliente.nome}`,
+        `📨 Notificação de candidatura com botões enviada para ${cliente.nome}`,
       );
     } catch (error) {
       this.logger.error(
-        '❌ Erro ao enviar WhatsApp de candidatura:',
+        '❌ Erro ao enviar WhatsApp com botões de candidatura:',
         error.message,
       );
     }
   }
 
   /**
-   * Envia notificação genérica
+   * Envia notificação genérica com botões
    */
-  async enviarNotificacaoGenerica(
+  async enviarNotificacaoComBotoes(
     telefone: string,
     mensagem: string,
+    buttonActions: ButtonActionDto[],
   ): Promise<void> {
     try {
       const payload = {
         phone: telefone,
         message: mensagem,
+        buttonActions,
         delayMessage: 10,
       };
 
-      await this.wApiService.sendMessage(payload);
-      this.logger.log(`Notificação genérica enviada para ${telefone}`);
+      await this.wApiService.sendButtonActions(payload);
+      this.logger.log(`Notificação com botões enviada para ${telefone}`);
     } catch (error) {
-      this.logger.error('Erro ao enviar notificação genérica:', error.message);
+      this.logger.error(
+        'Erro ao enviar notificação com botões:',
+        error.message,
+      );
     }
   }
 
   /**
-   * Formata mensagem de card criado
+   * Cria botões para notificação de card criado
+   */
+  private criarBotoesCardCriado(card: any): ButtonActionDto[] {
+    const baseUrl =
+      process.env.NODE_ENV === 'development'
+        ? 'http://localhost:4200'
+        : 'https://use-tudu.com.br';
+
+    return [
+      {
+        type: 'URL' as const,
+        buttonText: '📱 Acessar Pedido',
+        url: `${baseUrl}/home/budgets?id=${card.id_pedido}&flow=publicado`,
+      },
+      //   {
+      //     type: 'CALL' as const,
+      //     buttonText: '📞 Falar com Suporte',
+      //     phone: '+559992249708', // Substitua pelo telefone do suporte
+      //   },
+      //   {
+      //     type: 'REPLAY' as const,
+      //     buttonText: '💬 Tirar Dúvidas',
+      //   },
+    ];
+  }
+
+  /**
+   * Cria botões para notificação de nova candidatura
+   */
+  private criarBotoesNovaCandidatura(idPedido: string): ButtonActionDto[] {
+    const baseUrl =
+      process.env.NODE_ENV === 'development'
+        ? 'http://localhost:4200'
+        : 'https://use-tudu.com.br';
+
+    return [
+      {
+        type: 'URL' as const,
+        buttonText: '👀 Ver Proposta',
+        url: `${baseUrl}/home/budgets?id=${idPedido}&flow=publicado`,
+      },
+    ];
+  }
+
+  /**
+   * Formata mensagem de card criado (mantido igual)
    */
   private formatarMensagemCardCriado(card: any, nomeCliente: string): string {
     return `✅ *SEU PEDIDO FOI CRIADO COM SUCESSO!*
 
-👤 *Cliente:* ${nomeCliente}
 📦 *Pedido:* #${card.id_pedido}
 🗂️ *Categoria:* ${card.categoria}
-📋 *Serviço:* ${card.serviceDescription}
 💵 *Valor:* R$ ${card.valor}
+⏰ *Data:* ${card.horario_preferencial.replace('-', '/').replace(' ', ' - ')}
 📍 *Local:* ${card.street}, ${card.number} - ${card.neighborhood}
-🏙️ *Cidade:* ${card.city}/${card.state}
-
-⏰ *Horário Preferencial:* ${card.horario_preferencial}
 
 🔢 *Código de Confirmação:* ${card.codigo_confirmacao}
-
-_Status do pedido: ${card.status_pedido}_
 
 Obrigado por utilizar nossos serviços!`;
   }
 
   /**
-   * Formata mensagem de nova candidatura
+   * Formata mensagem de nova candidatura (mantido igual)
    */
   private formatarMensagemNovaCandidatura(
     idPedido: string,
     prestador: any,
     candidaturaDto: any,
     nomeCliente: string,
+    cardDTO: any,
   ): string {
-    const baseUrl =
-      process.env.NODE_ENV === 'development'
-        ? 'http://localhost:4200'
-        : 'https://use-tudu.com.br';
-
-    const linkProposta = `${baseUrl}/home/budgets?id=${idPedido}&flow=publicado`;
-
     return `🎯 *NOVA PROPOSTA RECEBIDA!*
 
-Olá ${nomeCliente}! Você recebeu uma nova proposta para seu pedido #${idPedido}.
-
+🗂️ *Categoria:* ${cardDTO.categoria}
 💰 *Valor Proposto:* R$ ${candidaturaDto.valor_negociado}
-⏰ *Horário Sugerido:* ${candidaturaDto.horario_negociado}
-
-📱 *ACESSE A PROPOSTA:*
-${linkProposta}
-
-💡 *Próximos passos:*
-• Clique no link acima para ver detalhes
-• Compare com outras propostas  
-• Aceite a que melhor atende suas necessidades
-
-_Estamos torcendo pelo melhor match!_`;
+⏰ *Horário Sugerido:* ${candidaturaDto.horario_negociado.replace('-', '/').replace(' ', ' - ')}`;
   }
 }
