@@ -10,34 +10,36 @@ datasource db {
 }
 
 model Cliente {
-  id_cliente      Int      @id @default(autoincrement())
-  telefone        String?
-  nome            String
-  sobrenome       String
-  cpf             String?  @unique
-  data_nascimento String?
-  email           String   @unique
-  password        String
-  endereco_estado String?
-  endereco_cidade String?
-  endereco_bairro String?
-  endereco_rua    String?
-  endereco_numero String?
-  avaliacao       String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @default(now()) @updatedAt
-  foto            String?
-  Card            Card[]
+  id_cliente        Int                @id @default(autoincrement())
+  telefone          String?
+  nome              String
+  sobrenome         String
+  cpf               String?            @unique
+  data_nascimento   String?
+  email             String             @unique
+  password          String
+  endereco_estado   String?
+  endereco_cidade   String?
+  endereco_bairro   String?
+  endereco_rua      String?
+  endereco_numero   String?
+  avaliacao         String?
+  created_at        DateTime           @default(now())
+  updated_at        DateTime           @default(now()) @updatedAt
+  foto              String?
+  Card              Card[]
+  notifications     Notification[]
+  userSubscriptions UserSubscription[]
 }
 
 model Prestador {
-  id_prestador           Int            @id @default(autoincrement())
+  id_prestador           Int                @id @default(autoincrement())
   telefone               String?
   nome                   String
   sobrenome              String
-  cpf                    String?        @unique
+  cpf                    String?            @unique
   data_nascimento        String?
-  email                  String         @unique
+  email                  String             @unique
   password               String
   endereco_estado        String?
   endereco_cidade        String?
@@ -45,16 +47,18 @@ model Prestador {
   endereco_rua           String?
   endereco_numero        String?
   especializacao         String?
-  descricao              String?        @db.Text
+  descricao              String?            @db.Text
   avaliacao              String?
-  created_at             DateTime       @default(now())
-  updated_at             DateTime       @default(now()) @updatedAt
+  created_at             DateTime           @default(now())
+  updated_at             DateTime           @default(now()) @updatedAt
   foto                   String?
   numero_servicos_feitos Int?
   Candidatura            Candidatura[]
   Card                   Card[]
-  Experiencias           Experiencia[]  @relation("PrestadorExperiencias")
-  Certificacoes          Certificacao[] @relation("PrestadorCertificacoes")
+  Experiencias           Experiencia[]      @relation("PrestadorExperiencias")
+  Certificacoes          Certificacao[]     @relation("PrestadorCertificacoes")
+  notifications          Notification[]
+  userSubscriptions      UserSubscription[]
 }
 
 // NOVA TABELA: Experiência Profissional
@@ -200,4 +204,34 @@ model ImagemCertificacao {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @default(now()) @updatedAt
   Certificacao    Certificacao @relation(fields: [certificacao_id], references: [id])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  title     String
+  body      String
+  icon      String?
+  url       String? // rota para abrir ao clicar
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // Quem vai receber
+  clienteId   Int?
+  prestadorId Int?
+
+  Cliente   Cliente?   @relation(fields: [clienteId], references: [id_cliente])
+  Prestador Prestador? @relation(fields: [prestadorId], references: [id_prestador])
+}
+
+model UserSubscription {
+  id               Int    @id @default(autoincrement())
+  subscriptionJson String // JSON string da subscription
+
+  clienteId   Int?
+  prestadorId Int?
+
+  Cliente   Cliente?   @relation(fields: [clienteId], references: [id_cliente])
+  Prestador Prestador? @relation(fields: [prestadorId], references: [id_prestador])
+
+  createdAt DateTime @default(now())
 }

@@ -66,7 +66,7 @@ export class CardsService {
     });
 
     // 🔔 ENVIO DO WHATSAPP APÓS SUCESSO
-    await this.notificationService.enviarNotificacaoCardCriado(novoCard);
+    await this.notificationService.enviarNotificacaoCardCriadoComBotoes(novoCard);
 
     return novoCard;
   }
@@ -558,11 +558,12 @@ export class CardsService {
               data_candidatura: new Date(),
             },
           });
-          await this.notificationService.enviarNotificacaoNovaCandidatura(
+          await this.notificationService.enviarNotificacaoNovaCandidaturaComBotoes(
             existingCard.id_cliente,
             id_pedido,
             prestador,
             candidaturaDto,
+            updatedCard
           );
         } else {
           // 🔔 BUSCA DADOS DO PRESTADOR PARA A MENSAGEM
@@ -592,11 +593,12 @@ export class CardsService {
 
           // 🔔 ENVIA WHATSAPP PARA CADA NOVA CANDIDATURA
           if (houveNovaCandidatura) {
-            await this.notificationService.enviarNotificacaoNovaCandidatura(
+            await this.notificationService.enviarNotificacaoNovaCandidaturaComBotoes(
               existingCard.id_cliente,
               id_pedido,
               prestador,
               candidaturaDto,
+              updatedCard
             );
           }
         }
