@@ -225,7 +225,7 @@ model Notification {
 
 model UserSubscription {
   id               Int    @id @default(autoincrement())
-  subscriptionJson String // JSON string da subscription
+  subscriptionJson String
 
   clienteId   Int?
   prestadorId Int?
@@ -234,4 +234,6 @@ model UserSubscription {
   Prestador Prestador? @relation(fields: [prestadorId], references: [id_prestador])
 
   createdAt DateTime @default(now())
+
+  @@unique([clienteId, prestadorId])
 }

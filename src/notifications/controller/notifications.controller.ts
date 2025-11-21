@@ -21,4 +21,13 @@ export class NotificationsController {
       data: { read: true },
     });
   }
+
+  @Post('subscribe')
+  async subscribe(@Body() body) {
+    return this.service.saveSubscription(
+      body.clienteId,
+      body.prestadorId,
+      body.subscription,
+    );
+  }
 }
