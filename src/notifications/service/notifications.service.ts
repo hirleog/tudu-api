@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import webpush from 'web-push';
+import * as webpush from 'web-push';
 
 @Injectable()
 export class NotificationsService {
