@@ -310,26 +310,35 @@ export class NotificationsService {
         return; // Nenhum dispositivo inscrito
       }
 
+      const urlCompleta = `https://use-tudu.com.br/home/budgets?id=${card.id_pedido}&flow=publicado`;
+
+      console.log('🔗 URL gerada:', urlCompleta);
+
       // 📌 Cria registro da notificação no banco
       await this.prisma.notification.create({
         data: {
           title: `Nova candidatura recebida`,
           body: `${prestador.nome} ofereceu R$ ${candidatura.valor_negociado}`,
           icon: '/assets/icons/icon-192x192.png',
-          url: `/card/${id_pedido}`,
+          url: urlCompleta, // ✅ Salva a URL completa
           clienteId,
         },
       });
 
-      // Payload enviado ao navegador
+      // ✅ CORRETO: Payload com URL no nível raiz
       const payload = JSON.stringify({
         title: '📨 Nova Candidatura',
         body: `${prestador.nome} enviou uma proposta no seu pedido.`,
         icon: '/assets/icons/icon-192x192.png',
+        url: urlCompleta, // ✅ URL no nível raiz
         data: {
-          url: `https://use-tudu.com.br/home/budgets?id=${card.id_pedido}&flow=publicado`,
+          url: urlCompleta, // ✅ Também mantém em data para compatibilidade
+          cardId: card.id_pedido,
+          type: 'NEW_CANDIDATURE',
         },
       });
+
+      console.log('📦 Payload completo:', payload);
 
       // 📌 Envia o push notification
       for (const s of subs) {
@@ -337,6 +346,7 @@ export class NotificationsService {
 
         try {
           await webpush.sendNotification(sub, payload);
+          console.log('✅ Push enviado com URL:', urlCompleta);
         } catch (err) {
           console.error('Erro enviando push:', err);
         }
