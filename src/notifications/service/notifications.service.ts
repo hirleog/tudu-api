@@ -20,62 +20,51 @@ export class NotificationsService {
     );
   }
 
-  async sendNotification({ title, body, icon, url, clienteId, prestadorId }) {
-    this.logger.log(
-      `📨 Criando notificação para cliente=${clienteId} prestador=${prestadorId}`,
-    );
-
-    const notification = await this.prisma.notification.create({
-      data: {
-        title,
-        body,
-        icon,
-        url,
-        clienteId,
-        prestadorId,
-      },
-    });
-
-    this.logger.log('📌 Notificação salva no banco com ID ' + notification.id);
-
-    const user = await this.prisma.userSubscription.findFirst({
-      where: { clienteId, prestadorId },
-    });
-
-    if (!user || !user.subscriptionJson) {
-      this.logger.warn(
-        `⚠ Usuário sem subscription. cliente=${clienteId} prestador=${prestadorId}`,
-      );
-      return notification;
-    }
-
-    this.logger.log('🔔 Enviando push para usuário...');
-
-    try {
-      await webpush.sendNotification(
-        JSON.parse(user.subscriptionJson),
-        JSON.stringify({
-          title,
-          body,
-          icon,
-          url,
-        }),
-      );
-
-      this.logger.log('✅ Push enviado com sucesso!');
-    } catch (error) {
-      this.logger.error('❌ Erro ao enviar push', error);
-    }
-
-    return notification;
+  /** ------------------------------------------------------------------
+   *  🔔 SALVA NOTIFICAÇÃO NO BANCO
+   *  ------------------------------------------------------------------ */
+  async create(data: {
+    title: string;
+    body: string;
+    icon: string;
+    url: string;
+    clienteId?: number;
+    prestadorId?: number;
+  }) {
+    return this.prisma.notification.create({ data });
   }
 
+  /** ------------------------------------------------------------------
+   *  📌 LISTA TODAS AS NOTIFICAÇÕES
+   *  ------------------------------------------------------------------ */
+  async findAll() {
+    return this.prisma.notification.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /** ------------------------------------------------------------------
+   *  📡 BUSCA TODAS AS SUBSCRIPTIONS REGISTRADAS
+   *  ------------------------------------------------------------------ */
+  async getAllSubscriptions() {
+    const subs = await this.prisma.userSubscription.findMany();
+
+    return subs.map((s) => ({
+      clienteId: s.clienteId,
+      prestadorId: s.prestadorId,
+      subscription: JSON.parse(s.subscriptionJson),
+    }));
+  }
+
+  /** ------------------------------------------------------------------
+   *  📬 SALVA SUBSCRIPTION DO FRONT-END
+   *  ------------------------------------------------------------------ */
   async saveSubscription(
     clienteId: number,
     prestadorId: number,
     subscription: any,
   ) {
-    const saved = await this.prisma.userSubscription.upsert({
+    return this.prisma.userSubscription.upsert({
       where: {
         clienteId_prestadorId: {
           clienteId,
@@ -91,11 +80,67 @@ export class NotificationsService {
         subscriptionJson: JSON.stringify(subscription),
       },
     });
-
-    return saved;
   }
 
-  /** 🔥 MÉTODO DE TESTE PARA DISPARO MANUAL */
+  /** ------------------------------------------------------------------
+   *  📣 ENVIA PUSH PARA UM USUÁRIO ESPECÍFICO
+   *  ------------------------------------------------------------------ */
+  async sendNotification({
+    title,
+    body,
+    icon,
+    url,
+    clienteId,
+    prestadorId,
+  }: {
+    title: string;
+    body: string;
+    icon: string;
+    url: string;
+    clienteId: number;
+    prestadorId: number;
+  }) {
+    this.logger.log(
+      `📨 Criando notificação para cliente=${clienteId} prestador=${prestadorId}`,
+    );
+
+    const notification = await this.create({
+      title,
+      body,
+      icon,
+      url,
+      clienteId,
+      prestadorId,
+    });
+
+    const user = await this.prisma.userSubscription.findFirst({
+      where: { clienteId, prestadorId },
+    });
+
+    if (!user || !user.subscriptionJson) {
+      this.logger.warn(
+        `⚠ Usuário sem subscription. cliente=${clienteId} prestador=${prestadorId}`,
+      );
+      return notification;
+    }
+
+    try {
+      await webpush.sendNotification(
+        JSON.parse(user.subscriptionJson),
+        JSON.stringify({ title, body, icon, url }),
+      );
+
+      this.logger.log('✅ Push enviado com sucesso!');
+    } catch (err) {
+      this.logger.error('❌ Erro ao enviar push', err);
+    }
+
+    return notification;
+  }
+
+  /** ------------------------------------------------------------------
+   *  🧪 USA O MÉTODO SEND PARA TESTE
+   *  ------------------------------------------------------------------ */
   async testNotification(clienteId: number, prestadorId: number) {
     return this.sendNotification({
       title: 'Test Push',
