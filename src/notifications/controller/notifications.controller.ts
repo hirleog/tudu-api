@@ -30,4 +30,12 @@ export class NotificationsController {
       body.subscription,
     );
   }
+
+  @Post('test/:clienteId/:prestadorId')
+  async test(
+    @Param('clienteId') clienteId: number,
+    @Param('prestadorId') prestadorId: number,
+  ) {
+    return this.service.testNotification(clienteId, prestadorId);
+  }
 }
