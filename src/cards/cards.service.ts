@@ -15,6 +15,7 @@ import { UpdateCardDto } from './dto/update-card.dto';
 import { card } from './entities/card.entity';
 import { Card } from './entities/showcase-card.entity';
 import { NotificationService } from 'src/wapi/service/notifications.service';
+import { NotificationsService } from 'src/notifications/service/notifications.service';
 @Injectable()
 export class CardsService {
   private readonly logger = new Logger(CardsService.name);
@@ -23,7 +24,7 @@ export class CardsService {
     private readonly prisma: PrismaService,
     private readonly eventsGateway: EventsGateway,
     private readonly wApiService: WApiService,
-    private readonly notificationService: NotificationService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(createCardDto: CreateCardDto, imagensUrl?: string[]) {
@@ -65,8 +66,12 @@ export class CardsService {
       include: { imagens: true },
     });
 
+    await this.notificationsService.sendCardCreatedPush(novoCard);
+
     // 🔔 ENVIO DO WHATSAPP APÓS SUCESSO
-    await this.notificationService.enviarNotificacaoCardCriadoComBotoes(novoCard);
+    // await this.notificationService.enviarNotificacaoCardCriadoComBotoes(
+    //   novoCard,
+    // );
 
     return novoCard;
   }
@@ -558,13 +563,13 @@ export class CardsService {
               data_candidatura: new Date(),
             },
           });
-          await this.notificationService.enviarNotificacaoNovaCandidaturaComBotoes(
-            existingCard.id_cliente,
-            id_pedido,
-            prestador,
-            candidaturaDto,
-            updatedCard
-          );
+          // await this.notificationService.enviarNotificacaoNovaCandidaturaComBotoes(
+          //   existingCard.id_cliente,
+          //   id_pedido,
+          //   prestador,
+          //   candidaturaDto,
+          //   updatedCard,
+          // );
         } else {
           // 🔔 BUSCA DADOS DO PRESTADOR PARA A MENSAGEM
           prestador = await this.prisma.prestador.findUnique({
@@ -593,13 +598,13 @@ export class CardsService {
 
           // 🔔 ENVIA WHATSAPP PARA CADA NOVA CANDIDATURA
           if (houveNovaCandidatura) {
-            await this.notificationService.enviarNotificacaoNovaCandidaturaComBotoes(
-              existingCard.id_cliente,
-              id_pedido,
-              prestador,
-              candidaturaDto,
-              updatedCard
-            );
+            // await this.notificationService.enviarNotificacaoNovaCandidaturaComBotoes(
+            //   existingCard.id_cliente,
+            //   id_pedido,
+            //   prestador,
+            //   candidaturaDto,
+            //   updatedCard,
+            // );
           }
         }
       }
