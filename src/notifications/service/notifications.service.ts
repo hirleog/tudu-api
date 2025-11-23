@@ -59,24 +59,20 @@ export class NotificationsService {
   /** ------------------------------------------------------------------
    *  📬 SALVA SUBSCRIPTION DO FRONT-END
    *  ------------------------------------------------------------------ */
-  async saveSubscription(
-    clienteId: number | null,
-    prestadorId: number | null,
-    subscription: any,
-  ) {
+  async saveSubscription(clienteId: any, prestadorId: any, subscription: any) {
     return this.prisma.userSubscription.upsert({
       where: {
         clienteId_prestadorId: {
-          clienteId: clienteId ?? null,
-          prestadorId: prestadorId ?? null,
+          clienteId: clienteId,
+          prestadorId: prestadorId,
         },
       },
       update: {
         subscriptionJson: JSON.stringify(subscription),
       },
       create: {
-        clienteId: clienteId ?? null,
-        prestadorId: prestadorId ?? null,
+        clienteId: clienteId,
+        prestadorId: prestadorId,
         subscriptionJson: JSON.stringify(subscription),
       },
     });
