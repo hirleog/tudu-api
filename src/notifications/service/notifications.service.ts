@@ -60,23 +60,23 @@ export class NotificationsService {
    *  📬 SALVA SUBSCRIPTION DO FRONT-END
    *  ------------------------------------------------------------------ */
   async saveSubscription(
-    clienteId: number,
-    prestadorId: number,
+    clienteId: number | null,
+    prestadorId: number | null,
     subscription: any,
   ) {
     return this.prisma.userSubscription.upsert({
       where: {
         clienteId_prestadorId: {
-          clienteId,
-          prestadorId,
+          clienteId: clienteId ?? null,
+          prestadorId: prestadorId ?? null,
         },
       },
       update: {
         subscriptionJson: JSON.stringify(subscription),
       },
       create: {
-        clienteId,
-        prestadorId,
+        clienteId: clienteId ?? null,
+        prestadorId: prestadorId ?? null,
         subscriptionJson: JSON.stringify(subscription),
       },
     });

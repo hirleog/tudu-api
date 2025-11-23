@@ -20,8 +20,8 @@ export class NotificationsController {
     const { clienteId, prestadorId, subscription } = body;
 
     return this.notificationsService.saveSubscription(
-      clienteId ?? 0,
-      prestadorId ?? 0,
+      clienteId,
+      prestadorId,
       subscription,
     );
   }
