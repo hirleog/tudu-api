@@ -138,6 +138,96 @@ export class NotificationsService {
     return notification;
   }
 
+  async sendCardCreatedPush(card: any) {
+    this.logger.log(
+      `🔔 Enviando push de novo card para card=${card.id_pedido}`,
+    );
+
+    // ------------------------------------
+    // 1. SALVA A NOTIFICAÇÃO NO BANCO
+    // ------------------------------------
+    const saved = await this.prisma.notification.create({
+      data: {
+        title: 'Novo Pedido Disponível!',
+        body: `${card.categoria} — ${card.city || ''} ${card.state ? '(' + card.state + ')' : ''}`.trim(),
+        icon: '/assets/icons/icon-192x192.png',
+        url: `https://use-tudu.com.br/home/budgets?id=${card.id_pedido}&flow=publicado`,
+        clienteId: null,
+        prestadorId: null,
+      },
+    });
+
+    // ------------------------------------
+    // 2. PREPARA PAYLOAD PARA O PUSH
+    //    (INDEPENDENTE DO BANCO)
+    // ------------------------------------
+    const pushPayload = {
+      title: saved.title,
+      body: saved.body,
+      icon: saved.icon,
+      url: saved.url,
+
+      // Estes NÃO vão para o banco, apenas para o push:
+      badge: '/assets/icons/badge-72x72.png',
+      vibrate: [200, 100, 200],
+      requireInteraction: true,
+      channelId: 'high-priority',
+      tag: `card-${card.id_pedido}`,
+    };
+
+    // ------------------------------------
+    // 3. BUSCA TODAS AS SUBSCRIPTIONS
+    // ------------------------------------
+    const subs = await this.prisma.userSubscription.findMany();
+
+    if (subs.length === 0) {
+      this.logger.warn('⚠ Nenhuma subscription encontrada para envio de push');
+      return saved;
+    }
+
+    // ------------------------------------
+    // 4. ENVIA O PUSH PARA CADA SUBSCRITO
+    // ------------------------------------
+    const results = await Promise.allSettled(
+      subs.map(async (s) => {
+        try {
+          const subscription = JSON.parse(s.subscriptionJson);
+          await webpush.sendNotification(
+            subscription,
+            JSON.stringify(pushPayload),
+          );
+          return { id: s.id, ok: true };
+        } catch (err) {
+          return { id: s.id, ok: false, error: err };
+        }
+      }),
+    );
+
+    // Remove subscriptions inválidas (status 410 ou 404)
+    const invalidIds: number[] = [];
+    results.forEach((r) => {
+      if (r.status === 'fulfilled' && !r.value.ok) {
+        const err = r.value.error;
+        const code = err?.statusCode || err?.status;
+        if (code === 404 || code === 410) {
+          invalidIds.push(r.value.id);
+        }
+      }
+    });
+
+    if (invalidIds.length > 0) {
+      this.logger.warn(
+        `🗑 Removendo ${invalidIds.length} subscriptions inválidas`,
+      );
+      await this.prisma.userSubscription.deleteMany({
+        where: { id: { in: invalidIds } },
+      });
+    }
+
+    this.logger.log('✅ Push de card novo concluído!');
+    return saved;
+  }
+
   /** ------------------------------------------------------------------
    *  🧪 USA O MÉTODO SEND PARA TESTE
    *  ------------------------------------------------------------------ */

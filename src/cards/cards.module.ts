@@ -7,6 +7,7 @@ import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
 import { PaymentsService } from 'src/getnet/payments/payments.service';
 import { InstallmentsService } from 'src/getnet/installments/service/installments.service';
 import { WApiModule } from 'src/wapi/wapi.module';
+import { NotificationsService } from 'src/notifications/service/notifications.service';
 
 @Module({
   imports: [PrismaModule, CloudinaryModule, WApiModule],
@@ -16,6 +17,7 @@ import { WApiModule } from 'src/wapi/wapi.module';
     EventsGateway,
     PaymentsService,
     InstallmentsService,
+    NotificationsService,
   ],
   exports: [EventsGateway],
 })
