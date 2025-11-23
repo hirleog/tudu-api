@@ -1,41 +1,58 @@
-import { Body, Controller, Param, Patch, Post } from '@nestjs/common';
+import { Controller, Post, Get, Body, Res } from '@nestjs/common';
+import { Response } from 'express';
+import * as webpush from 'web-push';
 import { NotificationsService } from '../service/notifications.service';
-import { Prisma } from '@prisma/client';
-import { PrismaService } from 'src/prisma/prisma.service';
 
 @Controller('notifications')
 export class NotificationsController {
   constructor(
-    private readonly service: NotificationsService,
-    private readonly prisma: PrismaService,
-  ) {}
-
-  @Post()
-  async send(@Body() data) {
-    return this.service.sendNotification(data);
-  }
-  @Patch(':id/read')
-  async markRead(@Param('id') id: number) {
-    return this.prisma.notification.update({
-      where: { id },
-      data: { read: true },
-    });
+    private readonly notificationsService: NotificationsService, // ← AQUI
+  ) {
+    webpush.setVapidDetails(
+      'mailto:seu-email@dominio.com',
+      process.env.VAPID_PUBLIC_KEY!,
+      process.env.VAPID_PRIVATE_KEY!,
+    );
   }
 
   @Post('subscribe')
-  async subscribe(@Body() body) {
-    return this.service.saveSubscription(
+  async subscribe(@Body() body: any) {
+    return this.notificationsService.saveSubscription(
       body.clienteId,
       body.prestadorId,
       body.subscription,
     );
   }
 
-  @Post('test/:clienteId/:prestadorId')
-  async test(
-    @Param('clienteId') clienteId: number,
-    @Param('prestadorId') prestadorId: number,
-  ) {
-    return this.service.testNotification(clienteId, prestadorId);
+  @Post('test')
+  async sendTest(@Res() res: Response) {
+    const payload = {
+      title: 'Test Push',
+      body: 'Funcionou!',
+      icon: '/assets/icons/icon-192x192.png',
+      url: 'https://google.com',
+    };
+
+    // 1. Salva a notificação no banco
+    const saved = await this.notificationsService.create(payload);
+
+    // 2. Busca todas as inscrições de push
+    const subscriptions = await this.notificationsService.getAllSubscriptions();
+
+    // 3. Envia push para cada inscrito
+    subscriptions.forEach((sub) => {
+      webpush
+        .sendNotification(sub.subscription, JSON.stringify(payload))
+        .catch((err) =>
+          console.error('Erro ao enviar push para assinatura: ', err),
+        );
+    });
+
+    return res.json(saved);
+  }
+
+  @Get()
+  async all() {
+    return this.notificationsService.findAll();
   }
 }
