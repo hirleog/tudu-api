@@ -262,7 +262,7 @@ export class NotificationsService {
         body: `${prestador.nome} enviou uma proposta no seu pedido.`,
         icon: '/assets/icons/icon-192x192.png',
         data: {
-          url: `/card/${id_pedido}`,
+          url: `https://use-tudu.com.br/home/budgets?id=${card.id_pedido}&flow=publicado`,
         },
       });
 
