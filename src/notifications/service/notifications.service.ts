@@ -60,24 +60,59 @@ export class NotificationsService {
    *  📬 SALVA SUBSCRIPTION DO FRONT-END
    *  ------------------------------------------------------------------ */
   async saveSubscription(clienteId: any, prestadorId: any, subscription: any) {
-    return this.prisma.userSubscription.upsert({
-      where: {
-        clienteId_prestadorId: {
-          clienteId: clienteId,
-          prestadorId: prestadorId,
+    // Determina o tipo de usuário
+    if (clienteId && !prestadorId) {
+      // É um cliente
+      return this.prisma.userSubscription.upsert({
+        where: {
+          id: await this.findSubscriptionIdByCliente(clienteId),
         },
-      },
-      update: {
-        subscriptionJson: JSON.stringify(subscription),
-      },
-      create: {
-        clienteId: clienteId,
-        prestadorId: prestadorId,
-        subscriptionJson: JSON.stringify(subscription),
-      },
-    });
+        update: {
+          subscriptionJson: JSON.stringify(subscription),
+        },
+        create: {
+          clienteId: clienteId,
+          subscriptionJson: JSON.stringify(subscription),
+        },
+      });
+    } else if (!clienteId && prestadorId) {
+      // É um prestador
+      return this.prisma.userSubscription.upsert({
+        where: {
+          id: await this.findSubscriptionIdByPrestador(prestadorId),
+        },
+        update: {
+          subscriptionJson: JSON.stringify(subscription),
+        },
+        create: {
+          prestadorId: prestadorId,
+          subscriptionJson: JSON.stringify(subscription),
+        },
+      });
+    } else {
+      throw new Error('Forneça apenas clienteId OU prestadorId, não ambos');
+    }
   }
 
+  private async findSubscriptionIdByCliente(
+    clienteId: number,
+  ): Promise<number> {
+    const existing = await this.prisma.userSubscription.findFirst({
+      where: { clienteId },
+      select: { id: true },
+    });
+    return existing?.id || 0; // 0 para create, >0 para update
+  }
+
+  private async findSubscriptionIdByPrestador(
+    prestadorId: number,
+  ): Promise<number> {
+    const existing = await this.prisma.userSubscription.findFirst({
+      where: { prestadorId },
+      select: { id: true },
+    });
+    return existing?.id || 0; // 0 para create, >0 para update
+  }
   /** ------------------------------------------------------------------
    *  📣 ENVIA PUSH PARA UM USUÁRIO ESPECÍFICO
    *  ------------------------------------------------------------------ */

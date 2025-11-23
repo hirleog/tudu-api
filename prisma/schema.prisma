@@ -235,5 +235,8 @@ model UserSubscription {
 
   createdAt DateTime @default(now())
 
-  @@unique([clienteId, prestadorId])
+  // Adicione indexes separados em vez de unique constraint composta
+  @@unique([clienteId])
+  @@unique([prestadorId])
+  @@index([clienteId, prestadorId])
 }
