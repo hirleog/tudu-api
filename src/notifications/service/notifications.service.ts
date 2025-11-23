@@ -7,7 +7,6 @@ export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
   constructor(private prisma: PrismaService) {
-    // Valida se as chaves estão carregadas
     if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
       this.logger.error(
         '❌ ERRO: Variáveis VAPID_PUBLIC_KEY ou VAPID_PRIVATE_KEY não definidas!',
@@ -26,7 +25,6 @@ export class NotificationsService {
       `📨 Criando notificação para cliente=${clienteId} prestador=${prestadorId}`,
     );
 
-    // 1 — Salva no banco
     const notification = await this.prisma.notification.create({
       data: {
         title,
@@ -40,7 +38,6 @@ export class NotificationsService {
 
     this.logger.log('📌 Notificação salva no banco com ID ' + notification.id);
 
-    // 2 — Busca subscription do usuário
     const user = await this.prisma.userSubscription.findFirst({
       where: { clienteId, prestadorId },
     });
@@ -54,7 +51,6 @@ export class NotificationsService {
 
     this.logger.log('🔔 Enviando push para usuário...');
 
-    // 3 — Envia via Web Push
     try {
       await webpush.sendNotification(
         JSON.parse(user.subscriptionJson),
@@ -96,6 +92,18 @@ export class NotificationsService {
       },
     });
 
-    return saved; // ← AQUI É O RETORNO QUE VOCÊ CONSEGUE TESTAR!
+    return saved;
+  }
+
+  /** 🔥 MÉTODO DE TESTE PARA DISPARO MANUAL */
+  async testNotification(clienteId: number, prestadorId: number) {
+    return this.sendNotification({
+      title: 'Test Push',
+      body: 'Funcionou!',
+      icon: '/assets/icons/icon-192x192.png',
+      url: 'https://google.com',
+      clienteId,
+      prestadorId,
+    });
   }
 }
