@@ -228,6 +228,59 @@ export class NotificationsService {
     return saved;
   }
 
+  async enviarPushNovaCandidatura(
+    clienteId: number,
+    id_pedido: string,
+    prestador: any,
+    candidatura: any,
+    card: any,
+  ) {
+    try {
+      // 📌 Busca todas as subscriptions do dono do card
+      const subs = await this.prisma.userSubscription.findMany({
+        where: { clienteId },
+      });
+
+      if (!subs.length) {
+        return; // Nenhum dispositivo inscrito
+      }
+
+      // 📌 Cria registro da notificação no banco
+      await this.prisma.notification.create({
+        data: {
+          title: `Nova candidatura recebida`,
+          body: `${prestador.nome} ofereceu R$ ${candidatura.valor_negociado}`,
+          icon: '/assets/icons/icon-192x192.png',
+          url: `/card/${id_pedido}`,
+          clienteId,
+        },
+      });
+
+      // Payload enviado ao navegador
+      const payload = JSON.stringify({
+        title: '📨 Nova Candidatura',
+        body: `${prestador.nome} enviou uma proposta no seu pedido.`,
+        icon: '/assets/icons/icon-192x192.png',
+        data: {
+          url: `/card/${id_pedido}`,
+        },
+      });
+
+      // 📌 Envia o push notification
+      for (const s of subs) {
+        const sub = JSON.parse(s.subscriptionJson);
+
+        try {
+          await webpush.sendNotification(sub, payload);
+        } catch (err) {
+          console.error('Erro enviando push:', err);
+        }
+      }
+    } catch (err) {
+      console.error('Erro enviarPushNovaCandidatura:', err);
+    }
+  }
+
   /** ------------------------------------------------------------------
    *  🧪 USA O MÉTODO SEND PARA TESTE
    *  ------------------------------------------------------------------ */
