@@ -224,94 +224,73 @@ export class NotificationsService {
     return notification;
   }
 
-  async sendCardCreatedPush(card: any) {
-    this.logger.log(
-      `🔔 Enviando push de novo card para card=${card.id_pedido}`,
-    );
+  async sendCardCreatedPushOptimized(card: any) {
+    this.logger.log(`🔔 Enviando push otimizado para prestadores`);
 
-    // ------------------------------------
-    // 1. SALVA A NOTIFICAÇÃO NO BANCO
-    // ------------------------------------
-    const saved = await this.prisma.notification.create({
-      data: {
-        title: 'Novo Pedido Disponível!',
-        body: `${card.categoria} — ${card.city || ''} ${card.state ? '(' + card.state + ')' : ''}`.trim(),
-        icon: '/assets/icons/icon-192x192.png',
-        url: `https://use-tudu.com.br/home/budgets?id=${card.id_pedido}&flow=publicado`,
-        clienteId: null,
-        prestadorId: null,
-      },
-    });
+    const BATCH_SIZE = 100; // Processa 100 prestadores por vez
+    let page = 0;
+    let hasMore = true;
+    let totalSent = 0;
 
-    // ------------------------------------
-    // 2. PREPARA PAYLOAD PARA O PUSH
-    //    (INDEPENDENTE DO BANCO)
-    // ------------------------------------
-    const pushPayload = {
-      title: saved.title,
-      body: saved.body,
-      icon: saved.icon,
-      url: saved.url,
-
-      // Estes NÃO vão para o banco, apenas para o push:
-      badge: '/assets/icons/badge-72x72.png',
-      vibrate: [200, 100, 200],
-      requireInteraction: true,
-      channelId: 'high-priority',
-      tag: `card-${card.id_pedido}`,
-    };
-
-    // ------------------------------------
-    // 3. BUSCA TODAS AS SUBSCRIPTIONS
-    // ------------------------------------
-    const subs = await this.prisma.userSubscription.findMany();
-
-    if (subs.length === 0) {
-      this.logger.warn('⚠ Nenhuma subscription encontrada para envio de push');
-      return saved;
-    }
-
-    // ------------------------------------
-    // 4. ENVIA O PUSH PARA CADA SUBSCRITO
-    // ------------------------------------
-    const results = await Promise.allSettled(
-      subs.map(async (s) => {
-        try {
-          const subscription = JSON.parse(s.subscriptionJson);
-          await webpush.sendNotification(
-            subscription,
-            JSON.stringify(pushPayload),
-          );
-          return { id: s.id, ok: true };
-        } catch (err) {
-          return { id: s.id, ok: false, error: err };
-        }
-      }),
-    );
-
-    // Remove subscriptions inválidas (status 410 ou 404)
-    const invalidIds: number[] = [];
-    results.forEach((r) => {
-      if (r.status === 'fulfilled' && !r.value.ok) {
-        const err = r.value.error;
-        const code = err?.statusCode || err?.status;
-        if (code === 404 || code === 410) {
-          invalidIds.push(r.value.id);
-        }
-      }
-    });
-
-    if (invalidIds.length > 0) {
-      this.logger.warn(
-        `🗑 Removendo ${invalidIds.length} subscriptions inválidas`,
-      );
-      await this.prisma.userSubscription.deleteMany({
-        where: { id: { in: invalidIds } },
+    while (hasMore) {
+      // Busca prestadores paginados
+      const prestadores = await this.prisma.prestador.findMany({
+        skip: page * BATCH_SIZE,
+        take: BATCH_SIZE,
+        select: { id_prestador: true, nome: true },
       });
+
+      if (prestadores.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      this.logger.log(
+        `📄 Processando lote ${page + 1}: ${prestadores.length} prestadores`,
+      );
+
+      // Busca subscriptions apenas deste lote
+      const prestadorIds = prestadores.map((p) => p.id_prestador);
+      const subs = await this.prisma.userSubscription.findMany({
+        where: { prestadorId: { in: prestadorIds } },
+      });
+
+      // Envia pushes para este lote
+      const pushPayload = {
+        title: '🎯 Novo Pedido Disponível!',
+        body: `${card.categoria} - R$ ${card.valor}`,
+        icon: '/assets/icons/icon-192x192.png',
+        url: `https://use-tudu.com.br/tudu-professional/home`,
+      };
+
+      const results = await Promise.allSettled(
+        subs.map(async (s) => {
+          try {
+            const subscription = JSON.parse(s.subscriptionJson);
+            await webpush.sendNotification(
+              subscription,
+              JSON.stringify(pushPayload),
+            );
+            return { id: s.id, ok: true };
+          } catch (err) {
+            return { id: s.id, ok: false, error: err };
+          }
+        }),
+      );
+
+      const successCount = results.filter(
+        (r) => r.status === 'fulfilled' && r.value.ok,
+      ).length;
+
+      totalSent += successCount;
+      this.logger.log(
+        `   ✅ ${successCount}/${subs.length} pushes enviados no lote`,
+      );
+
+      page++;
     }
 
-    this.logger.log('✅ Push de card novo concluído!');
-    return saved;
+    this.logger.log(`🎉 Total de pushes enviados: ${totalSent}`);
   }
 
   async enviarPushNovaCandidatura(
