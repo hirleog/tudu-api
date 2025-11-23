@@ -60,58 +60,113 @@ export class NotificationsService {
    *  📬 SALVA SUBSCRIPTION DO FRONT-END
    *  ------------------------------------------------------------------ */
   async saveSubscription(clienteId: any, prestadorId: any, subscription: any) {
-    // Determina o tipo de usuário
-    if (clienteId && !prestadorId) {
-      // É um cliente
-      return this.prisma.userSubscription.upsert({
-        where: {
-          id: await this.findSubscriptionIdByCliente(clienteId),
-        },
-        update: {
-          subscriptionJson: JSON.stringify(subscription),
-        },
-        create: {
-          clienteId: clienteId,
-          subscriptionJson: JSON.stringify(subscription),
-        },
-      });
-    } else if (!clienteId && prestadorId) {
-      // É um prestador
-      return this.prisma.userSubscription.upsert({
-        where: {
-          id: await this.findSubscriptionIdByPrestador(prestadorId),
-        },
-        update: {
-          subscriptionJson: JSON.stringify(subscription),
-        },
-        create: {
-          prestadorId: prestadorId,
+    console.log('💾 Salvando subscription:', {
+      clienteId,
+      prestadorId,
+      clienteIdIsNull: clienteId === null,
+      prestadorIdIsNull: prestadorId === null,
+      clienteIdIsUndefined: clienteId === undefined,
+      prestadorIdIsUndefined: prestadorId === undefined,
+    });
+
+    // Converte undefined para null e faz parse de números
+    const safeClienteId = this.safeParseId(clienteId);
+    const safePrestadorId = this.safeParseId(prestadorId);
+
+    console.log('🔧 IDs após tratamento:', {
+      safeClienteId,
+      safePrestadorId,
+    });
+
+    // Validação corrigida
+    if (!safeClienteId && !safePrestadorId) {
+      throw new Error('É necessário fornecer clienteId OU prestadorId');
+    }
+
+    // CLIENTE
+    if (safeClienteId && !safePrestadorId) {
+      console.log('👤 Salvando para cliente:', safeClienteId);
+
+      return this.saveForCliente(safeClienteId, subscription);
+    }
+
+    // PRESTADOR
+    if (!safeClienteId && safePrestadorId) {
+      console.log('👷 Salvando para prestador:', safePrestadorId);
+
+      return this.saveForPrestador(safePrestadorId, subscription);
+    }
+
+    // Caso ambos preenchidos (raro) - usa cliente como prioridade
+    console.warn('⚠️ Ambos IDs preenchidos, usando cliente como prioridade');
+    return this.saveForCliente(safeClienteId, subscription);
+  }
+
+  private safeParseId(id: any): number | null {
+    if (
+      id === null ||
+      id === undefined ||
+      id === 'null' ||
+      id === 'undefined'
+    ) {
+      return null;
+    }
+
+    // Converte para número se for string
+    const parsed = Number(id);
+    return isNaN(parsed) ? null : parsed;
+  }
+
+  private async saveForCliente(clienteId: number, subscription: any) {
+    const existing = await this.prisma.userSubscription.findFirst({
+      where: {
+        clienteId: clienteId,
+        prestadorId: null,
+      },
+    });
+
+    if (existing) {
+      return this.prisma.userSubscription.update({
+        where: { id: existing.id },
+        data: {
           subscriptionJson: JSON.stringify(subscription),
         },
       });
     } else {
-      throw new Error('Forneça apenas clienteId OU prestadorId, não ambos');
+      return this.prisma.userSubscription.create({
+        data: {
+          clienteId: clienteId,
+          prestadorId: null,
+          subscriptionJson: JSON.stringify(subscription),
+        },
+      });
     }
   }
 
-  private async findSubscriptionIdByCliente(
-    clienteId: number,
-  ): Promise<number> {
+  private async saveForPrestador(prestadorId: number, subscription: any) {
     const existing = await this.prisma.userSubscription.findFirst({
-      where: { clienteId },
-      select: { id: true },
+      where: {
+        prestadorId: prestadorId,
+        clienteId: null,
+      },
     });
-    return existing?.id || 0; // 0 para create, >0 para update
-  }
 
-  private async findSubscriptionIdByPrestador(
-    prestadorId: number,
-  ): Promise<number> {
-    const existing = await this.prisma.userSubscription.findFirst({
-      where: { prestadorId },
-      select: { id: true },
-    });
-    return existing?.id || 0; // 0 para create, >0 para update
+    if (existing) {
+      return this.prisma.userSubscription.update({
+        where: { id: existing.id },
+        data: {
+          subscriptionJson: JSON.stringify(subscription),
+        },
+      });
+    } else {
+      return this.prisma.userSubscription.create({
+        data: {
+          clienteId: null,
+          prestadorId: prestadorId,
+          subscriptionJson: JSON.stringify(subscription),
+        },
+      });
+    }
   }
   /** ------------------------------------------------------------------
    *  📣 ENVIA PUSH PARA UM USUÁRIO ESPECÍFICO
