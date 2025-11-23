@@ -17,10 +17,12 @@ export class NotificationsController {
 
   @Post('subscribe')
   async subscribe(@Body() body: any) {
+    const { clienteId, prestadorId, subscription } = body;
+
     return this.notificationsService.saveSubscription(
-      body.clienteId,
-      body.prestadorId,
-      body.subscription,
+      clienteId ?? null,
+      prestadorId ?? null,
+      subscription,
     );
   }
 
