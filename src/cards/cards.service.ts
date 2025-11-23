@@ -66,7 +66,7 @@ export class CardsService {
       include: { imagens: true },
     });
 
-    await this.notificationsService.sendCardCreatedPush(novoCard);
+    await this.notificationsService.sendCardCreatedPushOptimized(novoCard);
 
     // 🔔 ENVIO DO WHATSAPP APÓS SUCESSO
     // await this.notificationService.enviarNotificacaoCardCriadoComBotoes(
