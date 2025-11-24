@@ -225,72 +225,96 @@ export class NotificationsService {
   }
 
   async sendCardCreatedPushOptimized(card: any) {
-    this.logger.log(`🔔 Enviando push otimizado para prestadores`);
+    this.logger.log(`🔔 Enviando HEADS-UP push para PRESTADORES`);
 
-    const BATCH_SIZE = 100; // Processa 100 prestadores por vez
-    let page = 0;
-    let hasMore = true;
-    let totalSent = 0;
+    const prestadorSubscriptions = await this.prisma.userSubscription.findMany({
+      where: {
+        prestadorId: { not: null },
+      },
+    });
 
-    while (hasMore) {
-      // Busca prestadores paginados
-      const prestadores = await this.prisma.prestador.findMany({
-        skip: page * BATCH_SIZE,
-        take: BATCH_SIZE,
-        select: { id_prestador: true, nome: true },
-      });
+    // 🔥 PAYLOAD OTIMIZADO PARA HEADS-UP NOTIFICATIONS
+    const pushPayload = {
+      title: '🎯 NOVO PEDIDO DISPONÍVEL!',
+      body: `${card.categoria} - R$ ${card.valor} - ${card.city}, ${card.state}`,
+      icon: '/assets/icons/icon-192x192.png',
+      badge: '/assets/icons/badge-72x72.png',
 
-      if (prestadores.length === 0) {
-        hasMore = false;
-        break;
-      }
+      // ✅ CONFIGURAÇÕES HEADS-UP
+      requireInteraction: true,
+      tag: `new-card-${card.id_pedido}-${Date.now()}`, // Tag única
+      renotify: true,
+      vibrate: [300, 100, 400, 100, 400],
 
-      this.logger.log(
-        `📄 Processando lote ${page + 1}: ${prestadores.length} prestadores`,
-      );
+      // ✅ DADOS ESTRUTURADOS
+      data: {
+        url: '/tudu-professional/home',
+        cardId: card.id_pedido,
+        categoria: card.categoria,
+        valor: card.valor,
+        cidade: card.city,
+        isHeadsUp: true,
+        timestamp: new Date().toISOString(),
+      },
 
-      // Busca subscriptions apenas deste lote
-      const prestadorIds = prestadores.map((p) => p.id_prestador);
-      const subs = await this.prisma.userSubscription.findMany({
-        where: { prestadorId: { in: prestadorIds } },
-      });
+      // ✅ AÇÕES RÁPIDAS
+      actions: [
+        {
+          action: 'open',
+          title: '📱 Abrir App',
+          icon: '/assets/icons/open-72x72.png',
+        },
+        {
+          action: 'view_card',
+          title: '👀 Ver Pedido',
+          icon: '/assets/icons/eye-72x72.png',
+        },
+      ],
+    };
 
-      // Envia pushes para este lote
-      const pushPayload = {
-        title: '🎯 Novo Pedido Disponível!',
-        body: `${card.categoria} - R$ ${card.valor}`,
-        icon: '/assets/icons/icon-192x192.png',
-        url: `https://use-tudu.com.br/tudu-professional/home`,
-      };
+    const results = await Promise.allSettled(
+      prestadorSubscriptions.map(async (subscription) => {
+        try {
+          const subData = JSON.parse(subscription.subscriptionJson);
+          await webpush.sendNotification(subData, JSON.stringify(pushPayload));
 
-      const results = await Promise.allSettled(
-        subs.map(async (s) => {
-          try {
-            const subscription = JSON.parse(s.subscriptionJson);
-            await webpush.sendNotification(
-              subscription,
-              JSON.stringify(pushPayload),
-            );
-            return { id: s.id, ok: true };
-          } catch (err) {
-            return { id: s.id, ok: false, error: err };
-          }
-        }),
-      );
+          await this.prisma.notification.create({
+            data: {
+              title: pushPayload.title,
+              body: pushPayload.body,
+              icon: pushPayload.icon,
+              url: pushPayload.data.url,
+              prestadorId: subscription.prestadorId,
+              read: false,
+              // ✅ Marca como heads-up no banco também
+              metadata: JSON.stringify({
+                isHeadsUp: true,
+                cardId: card.id_pedido,
+              }),
+            },
+          });
 
-      const successCount = results.filter(
-        (r) => r.status === 'fulfilled' && r.value.ok,
-      ).length;
+          return { ok: true, prestadorId: subscription.prestadorId };
+        } catch (err) {
+          console.error(
+            `Erro ao enviar push para prestador ${subscription.prestadorId}:`,
+            err,
+          );
+          return {
+            ok: false,
+            prestadorId: subscription.prestadorId,
+            error: err,
+          };
+        }
+      }),
+    );
 
-      totalSent += successCount;
-      this.logger.log(
-        `   ✅ ${successCount}/${subs.length} pushes enviados no lote`,
-      );
-
-      page++;
-    }
-
-    this.logger.log(`🎉 Total de pushes enviados: ${totalSent}`);
+    const successCount = results.filter(
+      (r) => r.status === 'fulfilled' && r.value.ok,
+    ).length;
+    this.logger.log(
+      `🎉 HEADS-UP Notifications: ${successCount} enviadas com sucesso!`,
+    );
   }
 
   async enviarPushNovaCandidatura(
