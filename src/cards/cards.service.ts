@@ -563,6 +563,10 @@ export class CardsService {
               data_candidatura: new Date(),
             },
           });
+          
+          // if (existingCandidatura) {
+            
+          // }
           await this.notificationsService.enviarPushNovaCandidatura(
             existingCard.id_cliente,
             id_pedido,
