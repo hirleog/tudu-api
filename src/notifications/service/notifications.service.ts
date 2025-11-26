@@ -168,6 +168,7 @@ export class NotificationsService {
       });
     }
   }
+
   /** ------------------------------------------------------------------
    *  📣 ENVIA PUSH PARA UM USUÁRIO ESPECÍFICO
    *  ------------------------------------------------------------------ */
@@ -323,6 +324,7 @@ export class NotificationsService {
     prestador: any,
     candidatura: any,
     card: any,
+    isAtualizacao: boolean = false,
   ) {
     try {
       // 📌 Busca todas as subscriptions do dono do card
@@ -338,27 +340,41 @@ export class NotificationsService {
 
       console.log('🔗 URL gerada:', urlCompleta);
 
+      // Mensagens diferentes para nova candidatura vs atualização
+      const title = isAtualizacao
+        ? '📝 Proposta atualizada'
+        : '📨 Nova candidatura';
+
+      const body = isAtualizacao
+        ? `${prestador.nome} atualizou a proposta para R$ ${candidatura.valor_negociado}`
+        : `${prestador.nome} ofereceu R$ ${candidatura.valor_negociado}`;
+
+      const pushBody = isAtualizacao
+        ? `${prestador.nome} atualizou a proposta no seu pedido.`
+        : `${prestador.nome} enviou uma proposta no seu pedido.`;
+
       // 📌 Cria registro da notificação no banco
       await this.prisma.notification.create({
         data: {
-          title: `Nova candidatura recebida`,
-          body: `${prestador.nome} ofereceu R$ ${candidatura.valor_negociado}`,
+          title: title,
+          body: body,
           icon: '/assets/icons/icon-192x192.png',
-          url: urlCompleta, // ✅ Salva a URL completa
+          url: urlCompleta,
           clienteId,
         },
       });
 
       // ✅ CORRETO: Payload com URL no nível raiz
       const payload = JSON.stringify({
-        title: '📨 Nova Candidatura',
-        body: `${prestador.nome} enviou uma proposta no seu pedido.`,
+        title: title,
+        body: pushBody,
         icon: '/assets/icons/icon-192x192.png',
-        url: urlCompleta, // ✅ URL no nível raiz
+        url: urlCompleta,
         data: {
-          url: urlCompleta, // ✅ Também mantém em data para compatibilidade
+          url: urlCompleta,
           cardId: card.id_pedido,
-          type: 'NEW_CANDIDATURE',
+          type: isAtualizacao ? 'CANDIDATURA_ATUALIZADA' : 'NEW_CANDIDATURE',
+          isAtualizacao: isAtualizacao,
         },
       });
 
@@ -370,13 +386,179 @@ export class NotificationsService {
 
         try {
           await webpush.sendNotification(sub, payload);
-          console.log('✅ Push enviado com URL:', urlCompleta);
+          console.log(
+            `✅ Push ${isAtualizacao ? 'atualização' : 'nova'} enviado com URL:`,
+            urlCompleta,
+          );
         } catch (err) {
           console.error('Erro enviando push:', err);
         }
       }
     } catch (err) {
       console.error('Erro enviarPushNovaCandidatura:', err);
+    }
+  }
+
+  /** ------------------------------------------------------------------
+   *  🔔 NOTIFICA CLIENTE SOBRE CONTRATAÇÃO
+   *  ------------------------------------------------------------------ */
+  async notificarClienteContratacao(
+    clienteId: number,
+    id_pedido: string,
+    prestador: any,
+    card: any,
+  ) {
+    try {
+      const subs = await this.prisma.userSubscription.findMany({
+        where: { clienteId },
+      });
+
+      if (!subs.length) return;
+
+      const urlCompleta = `https://use-tudu.com.br/home/budgets?id=${card.id_pedido}&flow=andamento`;
+
+      // 📌 Cria registro da notificação no banco
+      await this.prisma.notification.create({
+        data: {
+          title: `🎉 Contratação confirmada!`,
+          body: `${prestador.nome} ${prestador.sobrenome} foi contratado para o seu serviço.`,
+          icon: '/assets/icons/icon-192x192.png',
+          url: urlCompleta,
+          clienteId,
+        },
+      });
+
+      const payload = JSON.stringify({
+        title: '🎉 Contratação confirmada!',
+        body: `Seu pedido está em andamento com ${prestador.nome}.`,
+        icon: '/assets/icons/icon-192x192.png',
+        url: urlCompleta,
+        data: {
+          url: urlCompleta,
+          cardId: card.id_pedido,
+          type: 'CONTRATACAO_CONFIRMADA',
+        },
+      });
+
+      for (const s of subs) {
+        const sub = JSON.parse(s.subscriptionJson);
+        try {
+          await webpush.sendNotification(sub, payload);
+          console.log('✅ Notificação de contratação enviada para cliente');
+        } catch (err) {
+          console.error('Erro enviando notificação de contratação:', err);
+        }
+      }
+    } catch (err) {
+      console.error('Erro notificarClienteContratacao:', err);
+    }
+  }
+
+  /** ------------------------------------------------------------------
+   *  🔔 NOTIFICA PRESTADOR SOBRE CONTRATAÇÃO
+   *  ------------------------------------------------------------------ */
+  async notificarPrestadorContratacao(
+    prestadorId: number,
+    id_pedido: string,
+    card: any,
+  ) {
+    try {
+      const subs = await this.prisma.userSubscription.findMany({
+        where: { prestadorId },
+      });
+
+      if (!subs.length) return;
+
+      const urlCompleta = `https://use-tudu.com.br/tudu-professional/home`;
+
+      // 📌 Cria registro da notificação no banco
+      await this.prisma.notification.create({
+        data: {
+          title: `🚀 Você foi contratado!`,
+          body: `Parabéns! Você foi selecionado para o serviço de ${card.categoria}.`,
+          icon: '/assets/icons/icon-192x192.png',
+          url: urlCompleta,
+          prestadorId,
+        },
+      });
+
+      const payload = JSON.stringify({
+        title: '🚀 Você foi contratado!',
+        body: `Seu serviço de ${card.categoria} está aguardando confirmação.`,
+        icon: '/assets/icons/icon-192x192.png',
+        url: urlCompleta,
+        data: {
+          url: urlCompleta,
+          cardId: card.id_pedido,
+          type: 'PRESTADOR_CONTRATADO',
+        },
+      });
+
+      for (const s of subs) {
+        const sub = JSON.parse(s.subscriptionJson);
+        try {
+          await webpush.sendNotification(sub, payload);
+          console.log('✅ Notificação de contratação enviada para prestador');
+        } catch (err) {
+          console.error('Erro enviando notificação para prestador:', err);
+        }
+      }
+    } catch (err) {
+      console.error('Erro notificarPrestadorContratacao:', err);
+    }
+  }
+
+  /** ------------------------------------------------------------------
+   *  🔔 NOTIFICA CANDIDATURA RECUSADA
+   *  ------------------------------------------------------------------ */
+  async notificarCandidaturaRecusada(
+    prestadorId: number,
+    id_pedido: string,
+    card: any,
+  ) {
+    try {
+      const subs = await this.prisma.userSubscription.findMany({
+        where: { prestadorId },
+      });
+
+      if (!subs.length) return;
+
+      const urlCompleta = `https://use-tudu.com.br/tudu-professional/home`;
+
+      // 📌 Cria registro da notificação no banco
+      await this.prisma.notification.create({
+        data: {
+          title: `📝 Proposta não selecionada`,
+          body: `Sua proposta para ${card.categoria} não foi selecionada. Não desanime!`,
+          icon: '/assets/icons/icon-192x192.png',
+          url: urlCompleta,
+          prestadorId,
+        },
+      });
+
+      const payload = JSON.stringify({
+        title: '📝 Proposta não selecionada',
+        body: `Sua proposta para ${card.categoria} não foi selecionada. Continue se candidatando!`,
+        icon: '/assets/icons/icon-192x192.png',
+        url: urlCompleta,
+        data: {
+          url: urlCompleta,
+          cardId: card.id_pedido,
+          type: 'CANDIDATURA_RECUSADA',
+        },
+      });
+
+      for (const s of subs) {
+        const sub = JSON.parse(s.subscriptionJson);
+        try {
+          await webpush.sendNotification(sub, payload);
+          console.log('✅ Notificação de candidatura recusada enviada');
+        } catch (err) {
+          console.error('Erro enviando notificação de recusa:', err);
+        }
+      }
+    } catch (err) {
+      console.error('Erro notificarCandidaturaRecusada:', err);
     }
   }
 

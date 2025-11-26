@@ -526,6 +526,7 @@ export class CardsService {
 
     await this.eventsGateway.notificarAtualizacao(updatedCard);
 
+    // Notificação para mudança de status do pedido
     if (
       updateCardDto.status_pedido &&
       updateCardDto.status_pedido === 'finalizado'
@@ -536,9 +537,34 @@ export class CardsService {
       );
     }
 
-    // Novo controle: flag para saber se houve nova candidatura
+    // Notificação quando pedido fica pendente (contratação feita)
+    if (
+      updateCardDto.status_pedido &&
+      updateCardDto.status_pedido === 'pendente'
+    ) {
+      const prestadorContratado = await this.prisma.prestador.findUnique({
+        where: { id_prestador: updateCardDto.candidaturas[0].prestador_id },
+        select: { nome: true, sobrenome: true, id_prestador: true },
+      });
+
+      // Notifica o CLIENTE sobre a contratação
+      await this.notificationsService.notificarClienteContratacao(
+        existingCard.id_cliente,
+        id_pedido,
+        prestadorContratado,
+        updatedCard,
+      );
+
+      // Notifica o PRESTADOR sobre a contratação
+      await this.notificationsService.notificarPrestadorContratacao(
+        updateCardDto.candidaturas[0].prestador_id,
+        id_pedido,
+        updatedCard,
+      );
+    }
+
+    // Controle de candidaturas
     let houveNovaCandidatura = false;
-    let novasCandidaturasCount = 0;
 
     if (updateCardDto.candidaturas) {
       const candidaturaDtos = updateCardDto.candidaturas;
@@ -554,6 +580,15 @@ export class CardsService {
         });
 
         if (existingCandidatura) {
+          // Verifica se houve mudanças significativas na candidatura
+          const houveMudancasSignificativas =
+            existingCandidatura.valor_negociado !==
+              candidaturaDto.valor_negociado ||
+            existingCandidatura.horario_negociado !==
+              candidaturaDto.horario_negociado ||
+            existingCandidatura.status !== candidaturaDto.status;
+
+          // Atualiza candidatura existente
           await this.prisma.candidatura.update({
             where: { id_candidatura: existingCandidatura.id_candidatura },
             data: {
@@ -563,22 +598,73 @@ export class CardsService {
               data_candidatura: new Date(),
             },
           });
-          
-          // if (existingCandidatura) {
-            
-          // }
-          await this.notificationsService.enviarPushNovaCandidatura(
-            existingCard.id_cliente,
-            id_pedido,
-            prestador,
-            candidaturaDto,
-            updatedCard,
-          );
-        } else {
-          // 🔔 BUSCA DADOS DO PRESTADOR PARA A MENSAGEM
+
+          // Busca dados atualizados do prestador
           prestador = await this.prisma.prestador.findUnique({
             where: { id_prestador: candidaturaDto.prestador_id },
-            select: { nome: true, sobrenome: true, avaliacao: true },
+            select: {
+              nome: true,
+              sobrenome: true,
+              avaliacao: true,
+              id_prestador: true,
+            },
+          });
+
+          // Se a candidatura estava recusada e houve mudanças, trata como nova candidatura
+          if (
+            existingCandidatura.status === 'recusado' &&
+            houveMudancasSignificativas
+          ) {
+            houveNovaCandidatura = true;
+
+            // 🔔 ENVIA NOTIFICAÇÃO PARA CANDIDATURA RECUSADA QUE FOI ATUALIZADA
+            await this.notificationsService.enviarPushNovaCandidatura(
+              existingCard.id_cliente,
+              id_pedido,
+              prestador,
+              candidaturaDto,
+              updatedCard,
+              true, // Indica que é uma candidatura atualizada
+            );
+          }
+          // Se houve mudanças significativas e não é recusada, também notifica
+          else if (
+            houveMudancasSignificativas &&
+            candidaturaDto.status !== 'recusado'
+          ) {
+            houveNovaCandidatura = true;
+
+            await this.notificationsService.enviarPushNovaCandidatura(
+              existingCard.id_cliente,
+              id_pedido,
+              prestador,
+              candidaturaDto,
+              updatedCard,
+              true, // Indica que é uma candidatura atualizada
+            );
+          }
+
+          // Notificação para candidatura recusada (apenas se o status mudou para recusado)
+          if (
+            candidaturaDto.status === 'recusado' &&
+            existingCandidatura.status !== 'recusado'
+          ) {
+            await this.notificationsService.notificarCandidaturaRecusada(
+              candidaturaDto.prestador_id,
+              id_pedido,
+              updatedCard,
+            );
+          }
+        } else {
+          // Nova candidatura
+          prestador = await this.prisma.prestador.findUnique({
+            where: { id_prestador: candidaturaDto.prestador_id },
+            select: {
+              nome: true,
+              sobrenome: true,
+              avaliacao: true,
+              id_prestador: true,
+            },
           });
 
           await this.prisma.candidatura.create({
@@ -596,29 +682,28 @@ export class CardsService {
             },
           });
 
-          // Marca que houve ao menos uma nova candidatura
           houveNovaCandidatura = true;
-          novasCandidaturasCount++;
 
-          // 🔔 ENVIA WHATSAPP PARA CADA NOVA CANDIDATURA
-          if (houveNovaCandidatura) {
-            await this.notificationsService.enviarPushNovaCandidatura(
-              existingCard.id_cliente,
-              id_pedido,
-              prestador,
-              candidaturaDto,
-              updatedCard,
-            );
-          }
+          // 🔔 ENVIA NOTIFICAÇÃO PARA CADA NOVA CANDIDATURA
+          await this.notificationsService.enviarPushNovaCandidatura(
+            existingCard.id_cliente,
+            id_pedido,
+            prestador,
+            candidaturaDto,
+            updatedCard,
+            false, // Indica que é uma candidatura nova
+          );
         }
       }
 
-      // ✅ Emite evento apenas uma vez se ao menos uma nova candidatura foi criada
+      // ✅ Emite evento apenas uma vez se ao menos uma nova candidatura foi criada ou atualizada significativamente
       if (houveNovaCandidatura) {
         this.eventsGateway.emitirAlertaNovaCandidatura(id_pedido);
         console.log('houveNovaCandidatura', houveNovaCandidatura);
       } else {
-        console.log('Nenhuma nova candidatura foi criada');
+        console.log(
+          'Nenhuma nova candidatura foi criada ou atualizada significativamente',
+        );
       }
     }
 
