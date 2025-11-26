@@ -725,7 +725,11 @@ export class CardsService {
       const card = await prisma.card.findUnique({
         where: { id_pedido },
         include: {
-          Candidatura: true,
+          Candidatura: {
+            include: {
+              Prestador: true,
+            },
+          },
           pagamentos: {
             where: {
               status: 'APPROVED',
@@ -785,11 +789,48 @@ export class CardsService {
         include: {
           imagens: true,
           pagamentos: true,
-          Candidatura: true, // Incluir as candidaturas atualizadas na resposta
+          Candidatura: {
+            include: {
+              Prestador: true,
+            },
+          }, // Incluir as candidaturas atualizadas na resposta
         },
       });
 
-      // ✅ 4. Notificações
+      // ✅ 4. NOTIFICAR PRESTADORES SOBRE O CANCELAMENTO
+      try {
+        // Se o card estava publicado e tinha candidaturas, notifica todos os candidatos
+        if (card.status_pedido === 'publicado' && card.Candidatura.length > 0) {
+          await this.notificationsService.notificarPrestadoresCancelamentoCard(
+            card.Candidatura,
+            id_pedido,
+            updatedCard,
+          );
+        }
+
+        // Se o card estava pendente (já tinha um prestador contratado), notifica o prestador específico
+        if (card.status_pedido === 'pendente' && card.id_prestador) {
+          const prestadorContratado = await prisma.prestador.findUnique({
+            where: { id_prestador: card.id_prestador },
+            select: { id_prestador: true, nome: true, sobrenome: true },
+          });
+
+          if (prestadorContratado) {
+            await this.notificationsService.notificarPrestadorContratadoCancelamento(
+              prestadorContratado.id_prestador,
+              id_pedido,
+              updatedCard,
+            );
+          }
+        }
+      } catch (notificationError) {
+        console.warn(
+          'Erro na notificação de cancelamento para prestadores:',
+          notificationError.message,
+        );
+      }
+
+      // ✅ 5. Notificações WebSocket
       try {
         await this.eventsGateway.notificarAtualizacao(updatedCard);
         this.eventsGateway.notifyClientStatusChange(
@@ -810,6 +851,7 @@ export class CardsService {
       };
     });
   }
+
   adjustTimezone(date: Date): Date {
     const adjustedDate = new Date(date);
     // Ajuste de -3 horas para UTC-3 (Brasília)
@@ -973,7 +1015,11 @@ export class CardsService {
       const candidatura = await prisma.candidatura.findUnique({
         where: { id_candidatura: Number(id_candidatura) },
         include: {
-          Card: true,
+          Card: {
+            include: {
+              Candidatura: true, // Incluir outras candidaturas para verificar se ainda há candidatos
+            },
+          },
           Prestador: true,
         },
       });
@@ -1005,17 +1051,67 @@ export class CardsService {
         },
       });
 
-      // disponibiliza o card novamente apos remoção da candidatura
-      await prisma.card.update({
+      // ✅ LÓGICA CORRIGIDA: Verificar se deve voltar para 'publicado' apenas se estava 'pendente'
+      // e esta era a única candidatura ativa
+      let novoStatus = candidatura.Card.status_pedido;
+
+      if (candidatura.Card.status_pedido === 'pendente') {
+        // Se o card estava pendente e cancelamos a candidatura, verificar se ainda há outras candidaturas ativas
+        const outrasCandidaturasAtivas = await prisma.candidatura.findMany({
+          where: {
+            id_pedido: id_pedido,
+            id_candidatura: { not: Number(id_candidatura) },
+            status: { not: 'cancelado' },
+          },
+        });
+
+        // Se não há mais candidaturas ativas, voltar para 'publicado'
+        if (outrasCandidaturasAtivas.length === 0) {
+          novoStatus = 'publicado';
+        }
+        // Se ainda há outras candidaturas, manter como 'pendente'
+        else {
+          novoStatus = 'pendente';
+        }
+      }
+
+      // Atualizar o card com o status correto
+      const cardAtualizado = await prisma.card.update({
         where: { id_pedido },
         data: {
-          status_pedido: 'publicado',
+          status_pedido: novoStatus,
+          // Se voltou para publicado, remover o prestador selecionado
+          id_prestador:
+            novoStatus === 'publicado' ? null : candidatura.Card.id_prestador,
           updatedAt: new Date(),
         },
+        include: {
+          Candidatura: {
+            include: {
+              Prestador: true,
+            },
+          },
+        },
       });
+
+      // 🔔 NOTIFICA O CLIENTE SOBRE O CANCELAMENTO DA CANDIDATURA
+      try {
+        await this.notificationsService.notificarClienteCancelamentoCandidatura(
+          candidatura.Card.id_cliente,
+          id_pedido,
+          candidatura.Prestador,
+          cardAtualizado,
+        );
+      } catch (notificationError) {
+        console.warn(
+          'Erro na notificação de cancelamento:',
+          notificationError.message,
+        );
+      }
+
       // Notificar via WebSocket sobre a atualização
       // try {
-      //   await this.eventsGateway.notificarAtualizacao(candidatura.Card);
+      //   await this.eventsGateway.notificarAtualizacao(cardAtualizado);
 
       //   // Notificar o prestador sobre o cancelamento da sua candidatura
       //   this.eventsGateway.notifyPrestadorCandidaturaCancelada(
@@ -1029,10 +1125,12 @@ export class CardsService {
       //     notificationError.message,
       //   );
       // }
+
       return {
         status: 'success',
         message: 'Candidatura removida com sucesso',
         candidatura: candidaturaDeletada,
+        card: cardAtualizado,
       };
     });
   }
