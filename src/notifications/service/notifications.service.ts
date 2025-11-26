@@ -346,11 +346,11 @@ export class NotificationsService {
         : '📨 Nova candidatura';
 
       const body = isAtualizacao
-        ? `${prestador.nome} atualizou a proposta para R$ ${candidatura.valor_negociado}`
+        ? `${prestador.nome} mandou nova proposta de R$ ${candidatura.valor_negociado}`
         : `${prestador.nome} ofereceu R$ ${candidatura.valor_negociado}`;
 
       const pushBody = isAtualizacao
-        ? `${prestador.nome} atualizou a proposta no seu pedido.`
+        ? `${prestador.nome} te fez uma nova proposta.`
         : `${prestador.nome} enviou uma proposta no seu pedido.`;
 
       // 📌 Cria registro da notificação no banco
@@ -559,6 +559,205 @@ export class NotificationsService {
       }
     } catch (err) {
       console.error('Erro notificarCandidaturaRecusada:', err);
+    }
+  }
+
+  /** ------------------------------------------------------------------
+   *  🔔 NOTIFICA TODOS OS PRESTADORES CANDIDATOS SOBRE CANCELAMENTO DO CARD
+   *  ------------------------------------------------------------------ */
+  async notificarPrestadoresCancelamentoCard(
+    candidaturas: any[],
+    id_pedido: string,
+    card: any,
+  ) {
+    try {
+      // Agrupa prestadores únicos para evitar notificações duplicadas
+      const prestadoresUnicos = candidaturas.reduce((unique, candidatura) => {
+        if (
+          candidatura.Prestador &&
+          !unique.some((p) => p.id_prestador === candidatura.prestador_id)
+        ) {
+          unique.push({
+            id_prestador: candidatura.prestador_id,
+            nome: candidatura.Prestador.nome,
+            sobrenome: candidatura.Prestador.sobrenome,
+          });
+        }
+        return unique;
+      }, []);
+
+      console.log(
+        `📢 Notificando ${prestadoresUnicos.length} prestadores sobre cancelamento do card ${id_pedido}`,
+      );
+
+      for (const prestador of prestadoresUnicos) {
+        const subs = await this.prisma.userSubscription.findMany({
+          where: { prestadorId: prestador.id_prestador },
+        });
+
+        if (!subs.length) continue;
+
+        const urlCompleta = `https://use-tudu.com.br/tudu-professional/home`;
+
+        // 📌 Cria registro da notificação no banco
+        await this.prisma.notification.create({
+          data: {
+            title: `❌ Pedido cancelado`,
+            body: `O pedido de ${card.categoria} que você se candidatou foi cancelado.`,
+            icon: '/assets/icons/icon-192x192.png',
+            url: urlCompleta,
+            prestadorId: prestador.id_prestador,
+          },
+        });
+
+        const payload = JSON.stringify({
+          title: '❌ Pedido cancelado',
+          body: `O pedido de ${card.categoria} foi cancelado pelo cliente.`,
+          icon: '/assets/icons/icon-192x192.png',
+          url: urlCompleta,
+          data: {
+            url: urlCompleta,
+            cardId: card.id_pedido,
+            type: 'CARD_CANCELADO',
+            categoria: card.categoria,
+          },
+        });
+
+        for (const s of subs) {
+          const sub = JSON.parse(s.subscriptionJson);
+          try {
+            await webpush.sendNotification(sub, payload);
+            console.log(
+              `✅ Notificação de cancelamento enviada para prestador ${prestador.id_prestador}`,
+            );
+          } catch (err) {
+            console.error(
+              `Erro enviando notificação para prestador ${prestador.id_prestador}:`,
+              err,
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Erro notificarPrestadoresCancelamentoCard:', err);
+    }
+  }
+
+  /** ------------------------------------------------------------------
+   *  🔔 NOTIFICA PRESTADOR CONTRATADO SOBRE CANCELAMENTO DO CARD
+   *  ------------------------------------------------------------------ */
+  async notificarPrestadorContratadoCancelamento(
+    prestadorId: number,
+    id_pedido: string,
+    card: any,
+  ) {
+    try {
+      const subs = await this.prisma.userSubscription.findMany({
+        where: { prestadorId },
+      });
+
+      if (!subs.length) return;
+
+      const urlCompleta = `https://use-tudu.com.br/tudu-professional/home`;
+
+      // 📌 Cria registro da notificação no banco
+      await this.prisma.notification.create({
+        data: {
+          title: `❌ Contrato cancelado`,
+          body: `O pedido de ${card.categoria} que você estava executando foi cancelado.`,
+          icon: '/assets/icons/icon-192x192.png',
+          url: urlCompleta,
+          prestadorId,
+        },
+      });
+
+      const payload = JSON.stringify({
+        title: '❌ Contrato cancelado',
+        body: `O pedido de ${card.categoria} foi cancelado pelo cliente.`,
+        icon: '/assets/icons/icon-192x192.png',
+        url: urlCompleta,
+        data: {
+          url: urlCompleta,
+          cardId: card.id_pedido,
+          type: 'CONTRATO_CANCELADO',
+          categoria: card.categoria,
+        },
+      });
+
+      for (const s of subs) {
+        const sub = JSON.parse(s.subscriptionJson);
+        try {
+          await webpush.sendNotification(sub, payload);
+          console.log(
+            `✅ Notificação de cancelamento de contrato enviada para prestador ${prestadorId}`,
+          );
+        } catch (err) {
+          console.error(
+            `Erro enviando notificação de cancelamento para prestador ${prestadorId}:`,
+            err,
+          );
+        }
+      }
+    } catch (err) {
+      console.error('Erro notificarPrestadorContratadoCancelamento:', err);
+    }
+  }
+
+  /** ------------------------------------------------------------------
+   *  🔔 NOTIFICA CLIENTE SOBRE CANCELAMENTO DE CANDIDATURA
+   *  ------------------------------------------------------------------ */
+  async notificarClienteCancelamentoCandidatura(
+    clienteId: number,
+    id_pedido: string,
+    prestador: any,
+    card: any,
+  ) {
+    try {
+      const subs = await this.prisma.userSubscription.findMany({
+        where: { clienteId },
+      });
+
+      if (!subs.length) return;
+
+      const urlCompleta = `https://use-tudu.com.br/home/budgets?id=${card.id_pedido}&flow=publicado`;
+
+      // 📌 Cria registro da notificação no banco
+      await this.prisma.notification.create({
+        data: {
+          title: `📝 Candidatura cancelada`,
+          body: `${prestador.nome} ${prestador.sobrenome} cancelou a proposta no seu pedido.`,
+          icon: '/assets/icons/icon-192x192.png',
+          url: urlCompleta,
+          clienteId,
+        },
+      });
+
+      const payload = JSON.stringify({
+        title: '📝 Candidatura cancelada',
+        body: `${prestador.nome} cancelou a proposta no seu pedido de ${card.categoria}.`,
+        icon: '/assets/icons/icon-192x192.png',
+        url: urlCompleta,
+        data: {
+          url: urlCompleta,
+          cardId: card.id_pedido,
+          type: 'CANDIDATURA_CANCELADA',
+          prestadorNome: `${prestador.nome} ${prestador.sobrenome}`,
+        },
+      });
+
+      for (const s of subs) {
+        const sub = JSON.parse(s.subscriptionJson);
+        try {
+          await webpush.sendNotification(sub, payload);
+          console.log(
+            '✅ Notificação de cancelamento de candidatura enviada para cliente',
+          );
+        } catch (err) {
+          console.error('Erro enviando notificação de cancelamento:', err);
+        }
+      }
+    } catch (err) {
+      console.error('Erro notificarClienteCancelamentoCandidatura:', err);
     }
   }
 
