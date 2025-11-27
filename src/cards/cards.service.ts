@@ -831,18 +831,18 @@ export class CardsService {
       }
 
       // ✅ 5. Notificações WebSocket
-      try {
-        await this.eventsGateway.notificarAtualizacao(updatedCard);
-        this.eventsGateway.notifyClientStatusChange(
-          updatedCard.id_pedido,
-          updatedCard.status_pedido,
-        );
-      } catch (notificationError) {
-        console.warn(
-          'Erro na notificação WebSocket:',
-          notificationError.message,
-        );
-      }
+      // try {
+      //   await this.eventsGateway.notificarAtualizacao(updatedCard);
+      //   this.eventsGateway.notifyClientStatusChange(
+      //     updatedCard.id_pedido,
+      //     updatedCard.status_pedido,
+      //   );
+      // } catch (notificationError) {
+      //   console.warn(
+      //     'Erro na notificação WebSocket:',
+      //     notificationError.message,
+      //   );
+      // }
 
       return {
         status: 'success',

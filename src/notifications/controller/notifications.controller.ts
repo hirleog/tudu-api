@@ -7,6 +7,7 @@ import {
   Query,
   Patch,
   Param,
+  Header,
 } from '@nestjs/common';
 import { Response } from 'express';
 import * as webpush from 'web-push';
@@ -68,6 +69,9 @@ export class NotificationsController {
   }
 
   @Get('list')
+  @Header('Cache-Control', 'no-cache, no-store, must-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
   async findAll(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 20,
@@ -105,6 +109,9 @@ export class NotificationsController {
 
   // ENDPOINT PARA CONTAR NÃO LIDAS
   @Get('list/count/unread')
+  @Header('Cache-Control', 'no-cache, no-store, must-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
   async countUnread(
     @Query('clienteId') clienteId?: number,
     @Query('prestadorId') prestadorId?: number,
