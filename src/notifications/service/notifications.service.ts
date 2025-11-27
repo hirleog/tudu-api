@@ -1,6 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as webpush from 'web-push';
+
+interface FindAllOptions {
+  page: number;
+  limit: number;
+  clienteId?: number;
+  prestadorId?: number;
+  read?: boolean;
+}
 
 @Injectable()
 export class NotificationsService {
@@ -37,10 +45,63 @@ export class NotificationsService {
   /** ------------------------------------------------------------------
    *  📌 LISTA TODAS AS NOTIFICAÇÕES
    *  ------------------------------------------------------------------ */
-  async findAll() {
-    return this.prisma.notification.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
+  async findAll(options: FindAllOptions) {
+    const { page, limit, clienteId, prestadorId, read } = options;
+    const skip = (page - 1) * limit;
+
+    // Construir where condition
+    const where: any = {};
+
+    if (clienteId !== undefined) {
+      where.clienteId = clienteId;
+    }
+
+    if (prestadorId !== undefined) {
+      where.prestadorId = prestadorId;
+    }
+
+    if (read !== undefined) {
+      where.read = read;
+    }
+
+    // Buscar notificações
+    const [notifications, total] = await Promise.all([
+      this.prisma.notification.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          Cliente: {
+            select: {
+              nome: true,
+              // foto_perfil: true,
+            },
+          },
+          Prestador: {
+            select: {
+              nome: true,
+              // foto_perfil: true,
+            },
+          },
+        },
+      }),
+      this.prisma.notification.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+    const hasMore = page < totalPages;
+
+    return {
+      notifications,
+      total,
+      page,
+      limit,
+      totalPages,
+      hasMore,
+    };
   }
 
   /** ------------------------------------------------------------------
@@ -421,7 +482,7 @@ export class NotificationsService {
       await this.prisma.notification.create({
         data: {
           title: `🎉 Contratação confirmada!`,
-          body: `${prestador.nome} ${prestador.sobrenome} foi contratado para o seu serviço.`,
+          body: `${prestador.nome} foi contratado para o seu serviço.`,
           icon: '/assets/icons/icon-192x192.png',
           url: urlCompleta,
           clienteId,
@@ -725,7 +786,7 @@ export class NotificationsService {
       await this.prisma.notification.create({
         data: {
           title: `📝 Candidatura cancelada`,
-          body: `${prestador.nome} ${prestador.sobrenome} cancelou a proposta no seu pedido.`,
+          body: `${prestador.nome} cancelou a proposta no seu pedido.`,
           icon: '/assets/icons/icon-192x192.png',
           url: urlCompleta,
           clienteId,
@@ -741,7 +802,7 @@ export class NotificationsService {
           url: urlCompleta,
           cardId: card.id_pedido,
           type: 'CANDIDATURA_CANCELADA',
-          prestadorNome: `${prestador.nome} ${prestador.sobrenome}`,
+          prestadorNome: `${prestador.nome}`,
         },
       });
 
@@ -773,5 +834,79 @@ export class NotificationsService {
       clienteId,
       prestadorId,
     });
+  }
+
+  async markAsRead(id: number) {
+    // Verifica se a notificação existe
+    const notification = await this.prisma.notification.findUnique({
+      where: { id },
+    });
+
+    if (!notification) {
+      throw new NotFoundException(`Notificação com ID ${id} não encontrada`);
+    }
+
+    // Atualiza para lida
+    return this.prisma.notification.update({
+      where: { id },
+      data: { read: true },
+    });
+  }
+
+  async markAllAsRead(clienteId?: number, prestadorId?: number) {
+    const where: any = { read: false };
+
+    if (clienteId !== undefined) {
+      where.clienteId = clienteId;
+    }
+
+    if (prestadorId !== undefined) {
+      where.prestadorId = prestadorId;
+    }
+
+    return this.prisma.notification.updateMany({
+      where,
+      data: { read: true },
+    });
+  }
+
+  async countUnread(clienteId?: number, prestadorId?: number) {
+    const where: any = { read: false };
+
+    if (clienteId !== undefined) {
+      where.clienteId = clienteId;
+    }
+
+    if (prestadorId !== undefined) {
+      where.prestadorId = prestadorId;
+    }
+
+    console.log('CountUnread - Where clause:', where); // DEBUG
+
+    return this.prisma.notification.count({ where });
+  }
+
+  async findOne(id: number) {
+    const notification = await this.prisma.notification.findUnique({
+      where: { id },
+      include: {
+        Cliente: {
+          select: {
+            nome: true,
+          },
+        },
+        Prestador: {
+          select: {
+            nome: true,
+          },
+        },
+      },
+    });
+
+    if (!notification) {
+      throw new NotFoundException(`Notificação com ID ${id} não encontrada`);
+    }
+
+    return notification;
   }
 }

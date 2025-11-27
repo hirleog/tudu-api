@@ -1,4 +1,13 @@
-import { Controller, Post, Get, Body, Res } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Res,
+  Query,
+  Patch,
+  Param,
+} from '@nestjs/common';
 import { Response } from 'express';
 import * as webpush from 'web-push';
 import { NotificationsService } from '../service/notifications.service';
@@ -58,8 +67,60 @@ export class NotificationsController {
     return res.json(saved);
   }
 
-  @Get()
-  async all() {
-    return this.notificationsService.findAll();
+  @Get('list')
+  async findAll(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+    @Query('clienteId') clienteId?: number,
+    @Query('prestadorId') prestadorId?: number,
+    @Query('read') read?: boolean,
+  ) {
+    const options = {
+      page: Math.max(1, page),
+      limit: Math.min(50, Math.max(1, limit)), // Máximo 50 por página
+      clienteId: clienteId ? Number(clienteId) : undefined,
+      prestadorId: prestadorId ? Number(prestadorId) : undefined,
+      read,
+    };
+
+    return this.notificationsService.findAll(options);
+  }
+
+  // ENDPOINT PARA MARCAR COMO LIDA
+  @Patch('list/:id/read')
+  async markAsRead(@Param('id') id: string) {
+    return this.notificationsService.markAsRead(Number(id));
+  }
+
+  // ENDPOINT PARA MARCAR TODAS COMO LIDAS
+  @Post('list/mark-all-read')
+  async markAllAsRead(
+    @Body() body: { clienteId?: number; prestadorId?: number },
+  ) {
+    return this.notificationsService.markAllAsRead(
+      body.clienteId,
+      body.prestadorId,
+    );
+  }
+
+  // ENDPOINT PARA CONTAR NÃO LIDAS
+  @Get('list/count/unread')
+  async countUnread(
+    @Query('clienteId') clienteId?: number,
+    @Query('prestadorId') prestadorId?: number,
+  ) {
+    console.log('CountUnread - Parâmetros recebidos:', {
+      clienteId,
+      prestadorId,
+    }); // DEBUG
+
+    const count = await this.notificationsService.countUnread(
+      clienteId ? Number(clienteId) : undefined,
+      prestadorId ? Number(prestadorId) : undefined,
+    );
+
+    console.log('CountUnread - Resultado:', count); // DEBUG
+
+    return { count };
   }
 }
