@@ -211,11 +211,10 @@ model Notification {
   title     String
   body      String
   icon      String?
-  url       String? // rota para abrir ao clicar
+  id_pedido String?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  // 🔥 NOVO CAMPO: metadata para dados extras
   metadata String? @db.Text // JSON string com dados extras
 
   // Quem vai receber
