@@ -813,7 +813,7 @@ export class NotificationsService {
         await this.prisma.notification.create({
           data: {
             title: `❌ Pedido cancelado`,
-            body: `O pedido de ${card.categoria} que você se candidatou foi cancelado.`,
+            body: `O pedido de ${card.categoria} que você se candidatou foi cancelado. Clique para ver novos serviços!`,
             icon: '/assets/icons/icon-192x192.png',
             id_pedido: id_pedido,
             prestadorId: prestador.id_prestador,
@@ -822,7 +822,7 @@ export class NotificationsService {
 
         const payload = JSON.stringify({
           title: '❌ Pedido cancelado',
-          body: `O pedido de ${card.categoria} foi cancelado pelo cliente.`,
+          body: `O pedido de ${card.categoria} foi cancelado pelo cliente. Clique para ver novos serviços!`,
           icon: '/assets/icons/icon-192x192.png',
           url: '/tudu-professional/home',
           data: {
