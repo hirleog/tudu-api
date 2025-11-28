@@ -35,7 +35,7 @@ export class NotificationsService {
     title: string;
     body: string;
     icon: string;
-    url: string;
+    id_pedido: string;
     clienteId?: number;
     prestadorId?: number;
   }) {
@@ -43,7 +43,7 @@ export class NotificationsService {
   }
 
   /** ------------------------------------------------------------------
-   *  📌 LISTA TODAS AS NOTIFICAÇÕES
+   *  📌 LISTA TODAS AS NOTIFICAÇÕES COM IMAGENS DO CARD
    *  ------------------------------------------------------------------ */
   async findAll(options: FindAllOptions) {
     const { page, limit, clienteId, prestadorId, read } = options;
@@ -77,13 +77,11 @@ export class NotificationsService {
           Cliente: {
             select: {
               nome: true,
-              // foto_perfil: true,
             },
           },
           Prestador: {
             select: {
               nome: true,
-              // foto_perfil: true,
             },
           },
         },
@@ -91,11 +89,46 @@ export class NotificationsService {
       this.prisma.notification.count({ where }),
     ]);
 
+    // ✅ BUSCAR IMAGENS PARA NOTIFICAÇÕES QUE TEM id_pedido
+    const notificationsWithImages = await Promise.all(
+      notifications.map(async (notification) => {
+        let imagens: string[] = [];
+
+        if (notification.id_pedido) {
+          try {
+            const cardWithImages = await this.prisma.card.findUnique({
+              where: { id_pedido: notification.id_pedido },
+              include: {
+                imagens: {
+                  select: { url: true },
+                  orderBy: { createdAt: 'asc' },
+                },
+              },
+            });
+
+            if (cardWithImages && cardWithImages.imagens.length > 0) {
+              imagens = cardWithImages.imagens.map((img) => img.url);
+            }
+          } catch (error) {
+            console.log(
+              `❌ Erro ao buscar imagens para card ${notification.id_pedido}:`,
+              error,
+            );
+          }
+        }
+
+        return {
+          ...notification,
+          imagens, // ✅ ADICIONA AS IMAGENS À NOTIFICAÇÃO
+        };
+      }),
+    );
+
     const totalPages = Math.ceil(total / limit);
     const hasMore = page < totalPages;
 
     return {
-      notifications,
+      notifications: notificationsWithImages,
       total,
       page,
       limit,
@@ -237,14 +270,14 @@ export class NotificationsService {
     title,
     body,
     icon,
-    url,
+    id_pedido,
     clienteId,
     prestadorId,
   }: {
     title: string;
     body: string;
     icon: string;
-    url: string;
+    id_pedido: string;
     clienteId: number;
     prestadorId: number;
   }) {
@@ -256,7 +289,7 @@ export class NotificationsService {
       title,
       body,
       icon,
-      url,
+      id_pedido,
       clienteId,
       prestadorId,
     });
@@ -273,9 +306,39 @@ export class NotificationsService {
     }
 
     try {
+      // ✅ BUSCA IMAGENS DO CARD PARA INCLUIR NO PUSH
+      let imagens: string[] = [];
+      if (id_pedido) {
+        const cardWithImages = await this.prisma.card.findUnique({
+          where: { id_pedido },
+          include: {
+            imagens: {
+              select: { url: true },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+
+        if (cardWithImages && cardWithImages.imagens.length > 0) {
+          imagens = cardWithImages.imagens.map((img) => img.url);
+        }
+      }
+
+      const pushPayload = {
+        title,
+        body,
+        icon,
+        url: this.buildNotificationUrl(id_pedido),
+        data: {
+          id_pedido,
+          type: 'GENERAL_NOTIFICATION',
+          imagens, // ✅ INCLUI IMAGENS NO PUSH
+        },
+      };
+
       await webpush.sendNotification(
         JSON.parse(user.subscriptionJson),
-        JSON.stringify({ title, body, icon, url }),
+        JSON.stringify(pushPayload),
       );
 
       this.logger.log('✅ Push enviado com sucesso!');
@@ -295,6 +358,24 @@ export class NotificationsService {
       },
     });
 
+    // ✅ BUSCA IMAGENS DO CARD
+    let imagens: string[] = [];
+    if (card.id_pedido) {
+      const cardWithImages = await this.prisma.card.findUnique({
+        where: { id_pedido: card.id_pedido },
+        include: {
+          imagens: {
+            select: { url: true },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      });
+
+      if (cardWithImages && cardWithImages.imagens.length > 0) {
+        imagens = cardWithImages.imagens.map((img) => img.url);
+      }
+    }
+
     // 🔥 PAYLOAD OTIMIZADO PARA HEADS-UP NOTIFICATIONS
     const pushPayload = {
       title: '🎯 NOVO PEDIDO DISPONÍVEL!',
@@ -310,11 +391,12 @@ export class NotificationsService {
 
       // ✅ DADOS ESTRUTURADOS
       data: {
+        id_pedido: card.id_pedido,
         url: '/tudu-professional/home',
-        cardId: card.id_pedido,
         categoria: card.categoria,
         valor: card.valor,
         cidade: card.city,
+        imagens, // ✅ INCLUI IMAGENS NO PUSH
         isHeadsUp: true,
         timestamp: new Date().toISOString(),
       },
@@ -345,13 +427,14 @@ export class NotificationsService {
               title: pushPayload.title,
               body: pushPayload.body,
               icon: pushPayload.icon,
-              url: pushPayload.data.url,
+              id_pedido: card.id_pedido,
               prestadorId: subscription.prestadorId,
               read: false,
               // ✅ Marca como heads-up no banco também
               metadata: JSON.stringify({
                 isHeadsUp: true,
                 cardId: card.id_pedido,
+                imagens, // ✅ SALVA IMAGENS NO METADATA
               }),
             },
           });
@@ -397,9 +480,23 @@ export class NotificationsService {
         return; // Nenhum dispositivo inscrito
       }
 
-      const urlCompleta = `https://use-tudu.com.br/home/budgets?id=${card.id_pedido}&flow=publicado`;
+      // ✅ BUSCA IMAGENS DO CARD
+      let imagens: string[] = [];
+      if (id_pedido) {
+        const cardWithImages = await this.prisma.card.findUnique({
+          where: { id_pedido },
+          include: {
+            imagens: {
+              select: { url: true },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
 
-      console.log('🔗 URL gerada:', urlCompleta);
+        if (cardWithImages && cardWithImages.imagens.length > 0) {
+          imagens = cardWithImages.imagens.map((img) => img.url);
+        }
+      }
 
       // Mensagens diferentes para nova candidatura vs atualização
       const title = isAtualizacao
@@ -420,26 +517,34 @@ export class NotificationsService {
           title: title,
           body: body,
           icon: '/assets/icons/icon-192x192.png',
-          url: urlCompleta,
+          id_pedido: id_pedido,
           clienteId,
+          metadata: JSON.stringify({
+            imagens, // ✅ SALVA IMAGENS NO METADATA
+            isAtualizacao,
+          }),
         },
       });
 
-      // ✅ CORRETO: Payload com URL no nível raiz
+      // ✅ CORRETO: Payload com id_pedido e imagens
       const payload = JSON.stringify({
         title: title,
         body: pushBody,
         icon: '/assets/icons/icon-192x192.png',
-        url: urlCompleta,
+        url: this.buildNotificationUrl(id_pedido),
         data: {
-          url: urlCompleta,
-          cardId: card.id_pedido,
+          id_pedido: id_pedido,
           type: isAtualizacao ? 'CANDIDATURA_ATUALIZADA' : 'NEW_CANDIDATURE',
           isAtualizacao: isAtualizacao,
+          imagens, // ✅ INCLUI IMAGENS NO PUSH
         },
       });
 
-      console.log('📦 Payload completo:', payload);
+      console.log('📦 Payload completo com imagens:', {
+        id_pedido,
+        imagensCount: imagens.length,
+        primeiraImagem: imagens[0],
+      });
 
       // 📌 Envia o push notification
       for (const s of subs) {
@@ -448,8 +553,9 @@ export class NotificationsService {
         try {
           await webpush.sendNotification(sub, payload);
           console.log(
-            `✅ Push ${isAtualizacao ? 'atualização' : 'nova'} enviado com URL:`,
-            urlCompleta,
+            `✅ Push ${isAtualizacao ? 'atualização' : 'nova'} enviado com id_pedido:`,
+            id_pedido,
+            `e ${imagens.length} imagens`,
           );
         } catch (err) {
           console.error('Erro enviando push:', err);
@@ -476,7 +582,23 @@ export class NotificationsService {
 
       if (!subs.length) return;
 
-      const urlCompleta = `https://use-tudu.com.br/home/budgets?id=${card.id_pedido}&flow=andamento`;
+      // ✅ BUSCA IMAGENS DO CARD
+      let imagens: string[] = [];
+      if (id_pedido) {
+        const cardWithImages = await this.prisma.card.findUnique({
+          where: { id_pedido },
+          include: {
+            imagens: {
+              select: { url: true },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+
+        if (cardWithImages && cardWithImages.imagens.length > 0) {
+          imagens = cardWithImages.imagens.map((img) => img.url);
+        }
+      }
 
       // 📌 Cria registro da notificação no banco
       await this.prisma.notification.create({
@@ -484,8 +606,12 @@ export class NotificationsService {
           title: `🎉 Contratação confirmada!`,
           body: `${prestador.nome} foi contratado para o seu serviço.`,
           icon: '/assets/icons/icon-192x192.png',
-          url: urlCompleta,
+          id_pedido: id_pedido,
           clienteId,
+          metadata: JSON.stringify({
+            imagens, // ✅ SALVA IMAGENS NO METADATA
+            prestadorNome: prestador.nome,
+          }),
         },
       });
 
@@ -493,11 +619,11 @@ export class NotificationsService {
         title: '🎉 Contratação confirmada!',
         body: `Seu pedido está em andamento com ${prestador.nome}.`,
         icon: '/assets/icons/icon-192x192.png',
-        url: urlCompleta,
+        url: this.buildNotificationUrl(id_pedido),
         data: {
-          url: urlCompleta,
-          cardId: card.id_pedido,
+          id_pedido: id_pedido,
           type: 'CONTRATACAO_CONFIRMADA',
+          imagens, // ✅ INCLUI IMAGENS NO PUSH
         },
       });
 
@@ -505,7 +631,11 @@ export class NotificationsService {
         const sub = JSON.parse(s.subscriptionJson);
         try {
           await webpush.sendNotification(sub, payload);
-          console.log('✅ Notificação de contratação enviada para cliente');
+          console.log(
+            '✅ Notificação de contratação enviada para cliente com',
+            imagens.length,
+            'imagens',
+          );
         } catch (err) {
           console.error('Erro enviando notificação de contratação:', err);
         }
@@ -530,7 +660,23 @@ export class NotificationsService {
 
       if (!subs.length) return;
 
-      const urlCompleta = `https://use-tudu.com.br/tudu-professional/home`;
+      // ✅ BUSCA IMAGENS DO CARD
+      let imagens: string[] = [];
+      if (id_pedido) {
+        const cardWithImages = await this.prisma.card.findUnique({
+          where: { id_pedido },
+          include: {
+            imagens: {
+              select: { url: true },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+
+        if (cardWithImages && cardWithImages.imagens.length > 0) {
+          imagens = cardWithImages.imagens.map((img) => img.url);
+        }
+      }
 
       // 📌 Cria registro da notificação no banco
       await this.prisma.notification.create({
@@ -538,8 +684,12 @@ export class NotificationsService {
           title: `🚀 Você foi contratado!`,
           body: `Parabéns! Você foi selecionado para o serviço de ${card.categoria}.`,
           icon: '/assets/icons/icon-192x192.png',
-          url: urlCompleta,
+          id_pedido: id_pedido,
           prestadorId,
+          metadata: JSON.stringify({
+            imagens, // ✅ SALVA IMAGENS NO METADATA
+            categoria: card.categoria,
+          }),
         },
       });
 
@@ -547,11 +697,11 @@ export class NotificationsService {
         title: '🚀 Você foi contratado!',
         body: `Seu serviço de ${card.categoria} está aguardando confirmação.`,
         icon: '/assets/icons/icon-192x192.png',
-        url: urlCompleta,
+        url: '/tudu-professional/home',
         data: {
-          url: urlCompleta,
-          cardId: card.id_pedido,
+          id_pedido: id_pedido,
           type: 'PRESTADOR_CONTRATADO',
+          imagens, // ✅ INCLUI IMAGENS NO PUSH
         },
       });
 
@@ -559,7 +709,11 @@ export class NotificationsService {
         const sub = JSON.parse(s.subscriptionJson);
         try {
           await webpush.sendNotification(sub, payload);
-          console.log('✅ Notificação de contratação enviada para prestador');
+          console.log(
+            '✅ Notificação de contratação enviada para prestador com',
+            imagens.length,
+            'imagens',
+          );
         } catch (err) {
           console.error('Erro enviando notificação para prestador:', err);
         }
@@ -584,15 +738,13 @@ export class NotificationsService {
 
       if (!subs.length) return;
 
-      const urlCompleta = `https://use-tudu.com.br/tudu-professional/home`;
-
       // 📌 Cria registro da notificação no banco
       await this.prisma.notification.create({
         data: {
           title: `📝 Proposta não selecionada`,
-          body: `Sua proposta para ${card.categoria} não foi selecionada. Não desanime!`,
+          body: `Sua proposta para ${card.categoria} não foi selecionada. Faça uma nova proposta!`,
           icon: '/assets/icons/icon-192x192.png',
-          url: urlCompleta,
+          id_pedido: id_pedido,
           prestadorId,
         },
       });
@@ -601,10 +753,9 @@ export class NotificationsService {
         title: '📝 Proposta não selecionada',
         body: `Sua proposta para ${card.categoria} não foi selecionada. Continue se candidatando!`,
         icon: '/assets/icons/icon-192x192.png',
-        url: urlCompleta,
+        url: '/tudu-professional/home',
         data: {
-          url: urlCompleta,
-          cardId: card.id_pedido,
+          id_pedido: id_pedido,
           type: 'CANDIDATURA_RECUSADA',
         },
       });
@@ -658,15 +809,13 @@ export class NotificationsService {
 
         if (!subs.length) continue;
 
-        const urlCompleta = `https://use-tudu.com.br/tudu-professional/home`;
-
         // 📌 Cria registro da notificação no banco
         await this.prisma.notification.create({
           data: {
             title: `❌ Pedido cancelado`,
             body: `O pedido de ${card.categoria} que você se candidatou foi cancelado.`,
             icon: '/assets/icons/icon-192x192.png',
-            url: urlCompleta,
+            id_pedido: id_pedido,
             prestadorId: prestador.id_prestador,
           },
         });
@@ -675,10 +824,9 @@ export class NotificationsService {
           title: '❌ Pedido cancelado',
           body: `O pedido de ${card.categoria} foi cancelado pelo cliente.`,
           icon: '/assets/icons/icon-192x192.png',
-          url: urlCompleta,
+          url: '/tudu-professional/home',
           data: {
-            url: urlCompleta,
-            cardId: card.id_pedido,
+            id_pedido: id_pedido,
             type: 'CARD_CANCELADO',
             categoria: card.categoria,
           },
@@ -719,15 +867,13 @@ export class NotificationsService {
 
       if (!subs.length) return;
 
-      const urlCompleta = `https://use-tudu.com.br/tudu-professional/home`;
-
       // 📌 Cria registro da notificação no banco
       await this.prisma.notification.create({
         data: {
           title: `❌ Contrato cancelado`,
           body: `O pedido de ${card.categoria} que você estava executando foi cancelado.`,
           icon: '/assets/icons/icon-192x192.png',
-          url: urlCompleta,
+          id_pedido: id_pedido,
           prestadorId,
         },
       });
@@ -736,10 +882,9 @@ export class NotificationsService {
         title: '❌ Contrato cancelado',
         body: `O pedido de ${card.categoria} foi cancelado pelo cliente.`,
         icon: '/assets/icons/icon-192x192.png',
-        url: urlCompleta,
+        url: '/tudu-professional/home',
         data: {
-          url: urlCompleta,
-          cardId: card.id_pedido,
+          id_pedido: id_pedido,
           type: 'CONTRATO_CANCELADO',
           categoria: card.categoria,
         },
@@ -780,15 +925,13 @@ export class NotificationsService {
 
       if (!subs.length) return;
 
-      const urlCompleta = `https://use-tudu.com.br/home/budgets?id=${card.id_pedido}&flow=publicado`;
-
       // 📌 Cria registro da notificação no banco
       await this.prisma.notification.create({
         data: {
           title: `📝 Candidatura cancelada`,
           body: `${prestador.nome} cancelou a proposta no seu pedido.`,
           icon: '/assets/icons/icon-192x192.png',
-          url: urlCompleta,
+          id_pedido: id_pedido,
           clienteId,
         },
       });
@@ -797,10 +940,9 @@ export class NotificationsService {
         title: '📝 Candidatura cancelada',
         body: `${prestador.nome} cancelou a proposta no seu pedido de ${card.categoria}.`,
         icon: '/assets/icons/icon-192x192.png',
-        url: urlCompleta,
+        url: this.buildNotificationUrl(id_pedido),
         data: {
-          url: urlCompleta,
-          cardId: card.id_pedido,
+          id_pedido: id_pedido,
           type: 'CANDIDATURA_CANCELADA',
           prestadorNome: `${prestador.nome}`,
         },
@@ -830,12 +972,15 @@ export class NotificationsService {
       title: 'Test Push',
       body: 'Funcionou!',
       icon: '/assets/icons/icon-192x192.png',
-      url: 'https://google.com',
+      id_pedido: 'test-123',
       clienteId,
       prestadorId,
     });
   }
 
+  /** ------------------------------------------------------------------
+   *  ✅ MARCA NOTIFICAÇÃO COMO LIDA
+   *  ------------------------------------------------------------------ */
   async markAsRead(id: number) {
     // Verifica se a notificação existe
     const notification = await this.prisma.notification.findUnique({
@@ -847,10 +992,16 @@ export class NotificationsService {
     }
 
     // Atualiza para lida
-    return this.prisma.notification.update({
+    const updatedNotification = await this.prisma.notification.update({
       where: { id },
       data: { read: true },
     });
+
+    // ✅ RETORNA COM id_pedido
+    return {
+      ...updatedNotification,
+      id_pedido: notification.id_pedido,
+    };
   }
 
   async markAllAsRead(clienteId?: number, prestadorId?: number) {
@@ -881,7 +1032,7 @@ export class NotificationsService {
       where.prestadorId = prestadorId;
     }
 
-    console.log('CountUnread - Where clause:', where); // DEBUG
+    console.log('CountUnread - Where clause:', where);
 
     return this.prisma.notification.count({ where });
   }
@@ -908,5 +1059,12 @@ export class NotificationsService {
     }
 
     return notification;
+  }
+
+  /** ------------------------------------------------------------------
+   *  🔧 MÉTODO AUXILIAR: CONSTRÓI URL A PARTIR DO ID_PEDIDO
+   *  ------------------------------------------------------------------ */
+  private buildNotificationUrl(id_pedido: string): string {
+    return `/home/budgets?id=${id_pedido}&flow=publicado`;
   }
 }

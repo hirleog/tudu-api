@@ -47,7 +47,7 @@ export class NotificationsController {
       title: 'Test Push',
       body: 'Funcionou!',
       icon: '/assets/icons/icon-192x192.png',
-      url: 'https://google.com',
+      id_pedido: 'https://google.com',
     };
 
     // 1. Salva a notificação no banco
