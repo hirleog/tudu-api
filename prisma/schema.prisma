@@ -213,6 +213,7 @@ model Notification {
   icon      String?
   id_pedido String?
   read      Boolean  @default(false)
+  status    String
   createdAt DateTime @default(now())
 
   metadata String? @db.Text // JSON string com dados extras

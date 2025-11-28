@@ -10,6 +10,16 @@ interface FindAllOptions {
   read?: boolean;
 }
 
+interface CreateNotificationData {
+  title: string;
+  body: string;
+  icon: string;
+  id_pedido: string;
+  clienteId?: number;
+  prestadorId?: number;
+  status?: string;
+}
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -31,15 +41,18 @@ export class NotificationsService {
   /** ------------------------------------------------------------------
    *  🔔 SALVA NOTIFICAÇÃO NO BANCO
    *  ------------------------------------------------------------------ */
-  async create(data: {
-    title: string;
-    body: string;
-    icon: string;
-    id_pedido: string;
-    clienteId?: number;
-    prestadorId?: number;
-  }) {
-    return this.prisma.notification.create({ data });
+  async create(data: CreateNotificationData) {
+    return this.prisma.notification.create({
+      data: {
+        title: data.title,
+        body: data.body,
+        icon: data.icon,
+        id_pedido: data.id_pedido,
+        clienteId: data.clienteId ?? null,
+        prestadorId: data.prestadorId ?? null,
+        status: data.status || 'GENERAL',
+      },
+    });
   }
 
   /** ------------------------------------------------------------------
@@ -273,6 +286,7 @@ export class NotificationsService {
     id_pedido,
     clienteId,
     prestadorId,
+    status = 'GENERAL',
   }: {
     title: string;
     body: string;
@@ -280,6 +294,7 @@ export class NotificationsService {
     id_pedido: string;
     clienteId: number;
     prestadorId: number;
+    status?: string;
   }) {
     this.logger.log(
       `📨 Criando notificação para cliente=${clienteId} prestador=${prestadorId}`,
@@ -292,6 +307,7 @@ export class NotificationsService {
       id_pedido,
       clienteId,
       prestadorId,
+      status,
     });
 
     const user = await this.prisma.userSubscription.findFirst({
@@ -333,6 +349,7 @@ export class NotificationsService {
           id_pedido,
           type: 'GENERAL_NOTIFICATION',
           imagens, // ✅ INCLUI IMAGENS NO PUSH
+          status,
         },
       };
 
@@ -399,6 +416,7 @@ export class NotificationsService {
         imagens, // ✅ INCLUI IMAGENS NO PUSH
         isHeadsUp: true,
         timestamp: new Date().toISOString(),
+        status: 'NEW_CARD',
       },
 
       // ✅ AÇÕES RÁPIDAS
@@ -430,6 +448,7 @@ export class NotificationsService {
               id_pedido: card.id_pedido,
               prestadorId: subscription.prestadorId,
               read: false,
+              status: 'NEW_CARD',
               // ✅ Marca como heads-up no banco também
               metadata: JSON.stringify({
                 isHeadsUp: true,
@@ -511,6 +530,8 @@ export class NotificationsService {
         ? `${prestador.nome} te fez uma nova proposta.`
         : `${prestador.nome} enviou uma proposta no seu pedido.`;
 
+      const status = isAtualizacao ? 'CANDIDATURE_UPDATED' : 'NEW_CANDIDATURE';
+
       // 📌 Cria registro da notificação no banco
       await this.prisma.notification.create({
         data: {
@@ -519,6 +540,7 @@ export class NotificationsService {
           icon: '/assets/icons/icon-192x192.png',
           id_pedido: id_pedido,
           clienteId,
+          status: status,
           metadata: JSON.stringify({
             imagens, // ✅ SALVA IMAGENS NO METADATA
             isAtualizacao,
@@ -537,6 +559,7 @@ export class NotificationsService {
           type: isAtualizacao ? 'CANDIDATURA_ATUALIZADA' : 'NEW_CANDIDATURE',
           isAtualizacao: isAtualizacao,
           imagens, // ✅ INCLUI IMAGENS NO PUSH
+          status: status,
         },
       });
 
@@ -567,7 +590,7 @@ export class NotificationsService {
   }
 
   /** ------------------------------------------------------------------
-   *  🔔 NOTIFICA CLIENTE SOBRE CONTRATAÇÃO
+   *  🔔 NOTIFICA CLIENTE SOBRE CONTRATAÇÃO (STATUS PENDENTE)
    *  ------------------------------------------------------------------ */
   async notificarClienteContratacao(
     clienteId: number,
@@ -608,6 +631,7 @@ export class NotificationsService {
           icon: '/assets/icons/icon-192x192.png',
           id_pedido: id_pedido,
           clienteId,
+          status: 'HIRE_CONFIRMED',
           metadata: JSON.stringify({
             imagens, // ✅ SALVA IMAGENS NO METADATA
             prestadorNome: prestador.nome,
@@ -624,6 +648,7 @@ export class NotificationsService {
           id_pedido: id_pedido,
           type: 'CONTRATACAO_CONFIRMADA',
           imagens, // ✅ INCLUI IMAGENS NO PUSH
+          status: 'HIRE_CONFIRMED',
         },
       });
 
@@ -646,7 +671,7 @@ export class NotificationsService {
   }
 
   /** ------------------------------------------------------------------
-   *  🔔 NOTIFICA PRESTADOR SOBRE CONTRATAÇÃO
+   *  🔔 NOTIFICA PRESTADOR SOBRE CONTRATAÇÃO (STATUS PENDENTE)
    *  ------------------------------------------------------------------ */
   async notificarPrestadorContratacao(
     prestadorId: number,
@@ -686,6 +711,7 @@ export class NotificationsService {
           icon: '/assets/icons/icon-192x192.png',
           id_pedido: id_pedido,
           prestadorId,
+          status: 'PROVIDER_HIRED',
           metadata: JSON.stringify({
             imagens, // ✅ SALVA IMAGENS NO METADATA
             categoria: card.categoria,
@@ -702,6 +728,7 @@ export class NotificationsService {
           id_pedido: id_pedido,
           type: 'PRESTADOR_CONTRATADO',
           imagens, // ✅ INCLUI IMAGENS NO PUSH
+          status: 'PROVIDER_HIRED',
         },
       });
 
@@ -720,6 +747,149 @@ export class NotificationsService {
       }
     } catch (err) {
       console.error('Erro notificarPrestadorContratacao:', err);
+    }
+  }
+
+  /** ------------------------------------------------------------------
+   *  🔔 NOTIFICA CLIENTE E PRESTADOR SOBRE SERVIÇO FINALIZADO
+   *  ------------------------------------------------------------------ */
+  async notificarServicoFinalizado(id_pedido: string, card: any) {
+    try {
+      // Busca dados do card com relacionamentos
+      const cardCompleto = await this.prisma.card.findUnique({
+        where: { id_pedido },
+        include: {
+          Cliente: true,
+          Prestador: true,
+        },
+      });
+
+      if (!cardCompleto) {
+        console.error(`Card ${id_pedido} não encontrado`);
+        return;
+      }
+
+      // ✅ BUSCA IMAGENS DO CARD
+      let imagens: string[] = [];
+      const cardWithImages = await this.prisma.card.findUnique({
+        where: { id_pedido },
+        include: {
+          imagens: {
+            select: { url: true },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      });
+
+      if (cardWithImages && cardWithImages.imagens.length > 0) {
+        imagens = cardWithImages.imagens.map((img) => img.url);
+      }
+
+      // 🔔 NOTIFICA O CLIENTE
+      if (cardCompleto.id_cliente) {
+        const subsCliente = await this.prisma.userSubscription.findMany({
+          where: { clienteId: cardCompleto.id_cliente },
+        });
+
+        if (subsCliente.length > 0) {
+          // 📌 Cria registro da notificação no banco para cliente
+          await this.prisma.notification.create({
+            data: {
+              title: `✅ Serviço concluído!`,
+              body: `Seu serviço de ${card.categoria} foi finalizado com sucesso.`,
+              icon: '/assets/icons/icon-192x192.png',
+              id_pedido: id_pedido,
+              clienteId: cardCompleto.id_cliente,
+              status: 'SERVICE_COMPLETED',
+              metadata: JSON.stringify({
+                imagens,
+                categoria: card.categoria,
+              }),
+            },
+          });
+
+          const payloadCliente = JSON.stringify({
+            title: '✅ Serviço concluído!',
+            body: `Seu serviço de ${card.categoria} foi finalizado com sucesso.`,
+            icon: '/assets/icons/icon-192x192.png',
+            url: this.buildNotificationUrl(id_pedido),
+            data: {
+              id_pedido: id_pedido,
+              type: 'SERVICO_FINALIZADO',
+              imagens,
+              status: 'SERVICE_COMPLETED',
+            },
+          });
+
+          for (const s of subsCliente) {
+            const sub = JSON.parse(s.subscriptionJson);
+            try {
+              await webpush.sendNotification(sub, payloadCliente);
+              console.log(
+                '✅ Notificação de serviço finalizado enviada para cliente',
+              );
+            } catch (err) {
+              console.error('Erro enviando notificação para cliente:', err);
+            }
+          }
+        }
+      }
+
+      // 🔔 NOTIFICA O PRESTADOR
+      if (cardCompleto.id_prestador) {
+        const subsPrestador = await this.prisma.userSubscription.findMany({
+          where: { prestadorId: cardCompleto.id_prestador },
+        });
+
+        if (subsPrestador.length > 0) {
+          // 📌 Cria registro da notificação no banco para prestador
+          await this.prisma.notification.create({
+            data: {
+              title: `🎊 Serviço finalizado!`,
+              body: `Parabéns! Você concluiu o serviço de ${card.categoria} com sucesso.`,
+              icon: '/assets/icons/icon-192x192.png',
+              id_pedido: id_pedido,
+              prestadorId: cardCompleto.id_prestador,
+              status: 'SERVICE_COMPLETED',
+              metadata: JSON.stringify({
+                imagens,
+                categoria: card.categoria,
+              }),
+            },
+          });
+
+          const payloadPrestador = JSON.stringify({
+            title: '🎊 Serviço finalizado!',
+            body: `Parabéns! Você concluiu o serviço de ${card.categoria} com sucesso.`,
+            icon: '/assets/icons/icon-192x192.png',
+            url: '/tudu-professional/home',
+            data: {
+              id_pedido: id_pedido,
+              type: 'SERVICO_FINALIZADO',
+              imagens,
+              status: 'SERVICE_COMPLETED',
+            },
+          });
+
+          for (const s of subsPrestador) {
+            const sub = JSON.parse(s.subscriptionJson);
+            try {
+              await webpush.sendNotification(sub, payloadPrestador);
+              console.log(
+                '✅ Notificação de serviço finalizado enviada para prestador',
+              );
+            } catch (err) {
+              console.error('Erro enviando notificação para prestador:', err);
+            }
+          }
+        }
+      }
+
+      console.log(
+        `✅ Notificações de serviço finalizado enviadas para card ${id_pedido}`,
+      );
+    } catch (err) {
+      console.error('Erro notificarServicoFinalizado:', err);
     }
   }
 
@@ -746,6 +916,7 @@ export class NotificationsService {
           icon: '/assets/icons/icon-192x192.png',
           id_pedido: id_pedido,
           prestadorId,
+          status: 'CANDIDATURE_REJECTED',
         },
       });
 
@@ -757,6 +928,7 @@ export class NotificationsService {
         data: {
           id_pedido: id_pedido,
           type: 'CANDIDATURA_RECUSADA',
+          status: 'CANDIDATURE_REJECTED',
         },
       });
 
@@ -817,6 +989,7 @@ export class NotificationsService {
             icon: '/assets/icons/icon-192x192.png',
             id_pedido: id_pedido,
             prestadorId: prestador.id_prestador,
+            status: 'CARD_CANCELLED',
           },
         });
 
@@ -829,6 +1002,7 @@ export class NotificationsService {
             id_pedido: id_pedido,
             type: 'CARD_CANCELADO',
             categoria: card.categoria,
+            status: 'CARD_CANCELLED',
           },
         });
 
@@ -875,6 +1049,7 @@ export class NotificationsService {
           icon: '/assets/icons/icon-192x192.png',
           id_pedido: id_pedido,
           prestadorId,
+          status: 'CONTRACT_CANCELLED',
         },
       });
 
@@ -887,6 +1062,7 @@ export class NotificationsService {
           id_pedido: id_pedido,
           type: 'CONTRATO_CANCELADO',
           categoria: card.categoria,
+          status: 'CONTRACT_CANCELLED',
         },
       });
 
@@ -933,6 +1109,7 @@ export class NotificationsService {
           icon: '/assets/icons/icon-192x192.png',
           id_pedido: id_pedido,
           clienteId,
+          status: 'CANDIDATURE_CANCELLED',
         },
       });
 
@@ -945,6 +1122,7 @@ export class NotificationsService {
           id_pedido: id_pedido,
           type: 'CANDIDATURA_CANCELADA',
           prestadorNome: `${prestador.nome}`,
+          status: 'CANDIDATURE_CANCELLED',
         },
       });
 
@@ -975,6 +1153,7 @@ export class NotificationsService {
       id_pedido: 'test-123',
       clienteId,
       prestadorId,
+      status: 'TEST',
     });
   }
 
