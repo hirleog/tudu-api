@@ -7,15 +7,12 @@ import {
 } from '@nestjs/common';
 import { customAlphabet } from 'nanoid';
 import { EventsGateway } from 'src/events/events.gateway';
+import { NotificationsService } from 'src/notifications/service/notifications.service';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { WApiService } from 'src/wapi/service/wapi.service';
 import { CancelCardDto } from './dto/cancel-card.dto';
 import { CreateCardDto } from './dto/create-card.dto';
 import { UpdateCardDto } from './dto/update-card.dto';
-import { card } from './entities/card.entity';
 import { Card } from './entities/showcase-card.entity';
-import { NotificationService } from 'src/wapi/service/notifications.service';
-import { NotificationsService } from 'src/notifications/service/notifications.service';
 @Injectable()
 export class CardsService {
   private readonly logger = new Logger(CardsService.name);
@@ -23,7 +20,6 @@ export class CardsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsGateway: EventsGateway,
-    private readonly wApiService: WApiService,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -531,6 +527,11 @@ export class CardsService {
       updateCardDto.status_pedido &&
       updateCardDto.status_pedido === 'finalizado'
     ) {
+      await this.notificationsService.notificarServicoFinalizado(
+        id_pedido,
+        updatedCard,
+      );
+
       this.eventsGateway.notifyClientStatusChange(
         updatedCard.id_pedido,
         updatedCard.status_pedido,
