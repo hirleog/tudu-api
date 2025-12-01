@@ -23,7 +23,6 @@ interface CreateNotificationData {
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private processingCards = new Set<string>(); // Para evitar processamento concorrente
 
   constructor(private prisma: PrismaService) {
     if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
@@ -40,31 +39,9 @@ export class NotificationsService {
   }
 
   /** ------------------------------------------------------------------
-   *  🔔 SALVA NOTIFICAÇÃO NO BANCO (COM DEDUPLICAÇÃO)
+   *  🔔 SALVA NOTIFICAÇÃO NO BANCO (SEMPRE)
    *  ------------------------------------------------------------------ */
   async create(data: CreateNotificationData) {
-    // Verifica se já existe notificação similar recentemente (para evitar duplicação)
-    const existingNotification = await this.prisma.notification.findFirst({
-      where: {
-        id_pedido: data.id_pedido,
-        status: data.status || 'GENERAL',
-        OR: [
-          { clienteId: data.clienteId || undefined },
-          { prestadorId: data.prestadorId || undefined },
-        ],
-        createdAt: {
-          gte: new Date(Date.now() - 5 * 60 * 1000), // Últimos 5 minutos
-        },
-      },
-    });
-
-    if (existingNotification) {
-      this.logger.log(
-        `ℹ Notificação similar já existe (ID: ${existingNotification.id}), retornando existente`,
-      );
-      return existingNotification;
-    }
-
     return this.prisma.notification.create({
       data: {
         title: data.title,
@@ -241,8 +218,60 @@ export class NotificationsService {
     return isNaN(parsed) ? null : parsed;
   }
 
+  private async saveForCliente(clienteId: number, subscription: any) {
+    const existing = await this.prisma.userSubscription.findFirst({
+      where: {
+        clienteId: clienteId,
+        prestadorId: null,
+      },
+    });
+
+    if (existing) {
+      return this.prisma.userSubscription.update({
+        where: { id: existing.id },
+        data: {
+          subscriptionJson: JSON.stringify(subscription),
+        },
+      });
+    } else {
+      return this.prisma.userSubscription.create({
+        data: {
+          clienteId: clienteId,
+          prestadorId: null,
+          subscriptionJson: JSON.stringify(subscription),
+        },
+      });
+    }
+  }
+
+  private async saveForPrestador(prestadorId: number, subscription: any) {
+    const existing = await this.prisma.userSubscription.findFirst({
+      where: {
+        prestadorId: prestadorId,
+        clienteId: null,
+      },
+    });
+
+    if (existing) {
+      return this.prisma.userSubscription.update({
+        where: { id: existing.id },
+        data: {
+          subscriptionJson: JSON.stringify(subscription),
+        },
+      });
+    } else {
+      return this.prisma.userSubscription.create({
+        data: {
+          clienteId: null,
+          prestadorId: prestadorId,
+          subscriptionJson: JSON.stringify(subscription),
+        },
+      });
+    }
+  }
+
   /** ------------------------------------------------------------------
-   *  🔔 ENVIA PUSH PARA UM USUÁRIO ESPECÍFICO (COM DEDUPLICAÇÃO)
+   *  🔔 ENVIA PUSH PARA UM USUÁRIO ESPECÍFICO
    *  ------------------------------------------------------------------ */
   async sendNotification({
     title,
@@ -265,44 +294,18 @@ export class NotificationsService {
       `📨 Criando notificação para cliente=${clienteId} prestador=${prestadorId}`,
     );
 
-    // ✅ 1. Verifica se já existe notificação similar recentemente
-    const existingNotification = await this.prisma.notification.findFirst({
-      where: {
-        id_pedido,
-        status,
-        OR: [
-          { clienteId: clienteId || undefined },
-          { prestadorId: prestadorId || undefined },
-        ],
-        createdAt: {
-          gte: new Date(Date.now() - 2 * 60 * 1000), // Últimos 2 minutos
-        },
-      },
+    // ✅ 1. SEMPRE salva a notificação no banco (para a central)
+    const notification = await this.create({
+      title,
+      body,
+      icon,
+      id_pedido,
+      clienteId,
+      prestadorId,
+      status,
     });
 
-    let notification;
-
-    if (existingNotification) {
-      this.logger.log(
-        `ℹ Notificação similar já existe (ID: ${existingNotification.id})`,
-      );
-      notification = existingNotification;
-    } else {
-      // ✅ 2. Cria nova notificação no banco
-      notification = await this.prisma.notification.create({
-        data: {
-          title,
-          body,
-          icon,
-          id_pedido,
-          clienteId: clienteId ?? null,
-          prestadorId: prestadorId ?? null,
-          status,
-        },
-      });
-    }
-
-    // ✅ 3. Busca subscriptions para enviar push (se existirem)
+    // ✅ 2. Busca subscriptions para enviar push (se existirem)
     const userSubscriptions = await this.prisma.userSubscription.findMany({
       where: {
         OR: [
@@ -320,7 +323,7 @@ export class NotificationsService {
       return notification;
     }
 
-    // ✅ 4. BUSCA IMAGENS DO CARD PARA INCLUIR NO PUSH
+    // ✅ 3. BUSCA IMAGENS DO CARD PARA INCLUIR NO PUSH
     let imagens: string[] = [];
     if (id_pedido) {
       const cardWithImages = await this.prisma.card.findUnique({
@@ -338,7 +341,7 @@ export class NotificationsService {
       }
     }
 
-    // ✅ 5. Prepara payload do push
+    // ✅ 4. Prepara payload do push
     const pushPayload = {
       title,
       body,
@@ -352,7 +355,7 @@ export class NotificationsService {
       },
     };
 
-    // ✅ 6. Envia push para todas as subscriptions do usuário
+    // ✅ 5. Envia push para todas as subscriptions do usuário
     const pushResults = await Promise.allSettled(
       userSubscriptions.map(async (subscription) => {
         try {
@@ -387,217 +390,177 @@ export class NotificationsService {
   }
 
   /** ------------------------------------------------------------------
-   *  🔔 ENVIA PUSH PARA TODOS OS PRESTADORES (OTIMIZADO E COM DEDUPLICAÇÃO)
+   *  🔔 ENVIA PUSH PARA TODOS OS PRESTADORES (OTIMIZADO)
    *  ------------------------------------------------------------------ */
   async sendCardCreatedPushOptimized(card: any) {
-    const cardId = card.id_pedido;
+    this.logger.log(
+      `🔔 Enviando HEADS-UP push para PRESTADORES - Card: ${card.id_pedido}`,
+    );
 
-    // ✅ 1. VERIFICAÇÃO DE CONCORRÊNCIA - Evita múltiplas execuções simultâneas
-    if (this.processingCards.has(cardId)) {
-      this.logger.warn(
-        `⏭️ Card ${cardId} já está sendo processado, ignorando chamada duplicada`,
-      );
+    // ✅ 1. Busca todos os prestadores ÚNICOS com uma query otimizada
+    const prestadoresUnicos = await this.prisma.userSubscription.groupBy({
+      by: ['prestadorId'],
+      where: {
+        prestadorId: { not: null },
+      },
+      _count: {
+        id: true,
+      },
+    });
+
+    if (!prestadoresUnicos.length) {
+      this.logger.warn('⚠ Nenhum prestador com subscription encontrado.');
       return {
         success: false,
-        message: 'Card já está sendo processado',
-        cardId,
+        message: 'Nenhum prestador com subscription encontrado',
+        totalPrestadores: 0,
       };
     }
 
-    try {
-      this.processingCards.add(cardId);
+    // ✅ 2. Para cada prestador, busca TODAS suas subscriptions
+    const resultados: Array<{
+      prestadorId: number;
+      notificacaoCriada: boolean;
+      pushEnviados: number;
+      totalDispositivos: number;
+      sucesso: boolean;
+    }> = [];
 
-      this.logger.log(
-        `🔔 [LOCKED] Enviando HEADS-UP push para PRESTADORES - Card: ${cardId}`,
-      );
+    for (const grupo of prestadoresUnicos) {
+      const prestadorId = grupo.prestadorId!;
+      const totalDispositivos = grupo._count.id;
 
-      // ✅ 2. VERIFICAÇÃO INICIAL: Já processamos este card recentemente?
-      const existingCardNotification = await this.prisma.notification.findFirst(
-        {
+      // ✅ 3. Busca todas as subscriptions deste prestador específico
+      const subscriptionsDoPrestador =
+        await this.prisma.userSubscription.findMany({
           where: {
-            id_pedido: cardId,
-            status: 'NEW_CARD',
-            prestadorId: null, // Notificação global do card
-            createdAt: {
-              gte: new Date(Date.now() - 2 * 60 * 1000), // Últimos 2 minutos
-            },
-          },
-        },
-      );
-
-      if (existingCardNotification) {
-        this.logger.warn(
-          `⏭️ Card ${cardId} já foi notificado recentemente (ID: ${existingCardNotification.id})`,
-        );
-        return {
-          success: false,
-          message: 'Card já notificado recentemente',
-          existingNotificationId: existingCardNotification.id,
-          cardId,
-        };
-      }
-
-      // ✅ 3. Cria uma notificação global para o card (apenas uma)
-      const cardGlobalNotification = await this.prisma.notification.create({
-        data: {
-          title: '🎯 NOVO PEDIDO DISPONÍVEL!',
-          body: `${card.categoria} - R$ ${card.valor} - ${card.city}, ${card.state}`,
-          icon: '/assets/icons/icon-192x192.png',
-          id_pedido: cardId,
-          status: 'NEW_CARD',
-          metadata: JSON.stringify({
-            isHeadsUp: true,
-            cardId,
-            categoria: card.categoria,
-            valor: card.valor,
-            cidade: card.city,
-            isGlobalNotification: true,
-          }),
-        },
-      });
-
-      // ✅ 4. Busca prestadores DISTINTOS usando groupBy
-      const prestadoresGrupos = await this.prisma.userSubscription.groupBy({
-        by: ['prestadorId'],
-        where: {
-          prestadorId: { not: null },
-        },
-        _count: {
-          _all: true,
-        },
-      });
-
-      const prestadoresIds = prestadoresGrupos
-        .map((g) => g.prestadorId)
-        .filter((id): id is number => id !== null);
-
-      if (prestadoresIds.length === 0) {
-        this.logger.warn('⚠ Nenhum prestador com subscription encontrado.');
-        return {
-          success: false,
-          message: 'Nenhum prestador com subscription encontrado',
-          cardId,
-          globalNotificationId: cardGlobalNotification.id,
-        };
-      }
-
-      // ✅ 5. BUSCA IMAGENS DO CARD (uma vez)
-      let imagens: string[] = [];
-      if (cardId) {
-        const cardWithImages = await this.prisma.card.findUnique({
-          where: { id_pedido: cardId },
-          include: {
-            imagens: {
-              select: { url: true },
-              orderBy: { createdAt: 'asc' },
-              take: 3, // Limita a 3 imagens
-            },
+            prestadorId: prestadorId,
           },
         });
 
-        if (cardWithImages?.imagens?.length > 0) {
-          imagens = cardWithImages.imagens.map((img) => img.url);
-        }
-      }
+      // ✅ 4. VERIFICAÇÃO DE DUPLICAÇÃO COM LOCK (usando transação)
+      const notificacaoExistente = await this.prisma.$transaction(
+        async (tx) => {
+          // Primeiro verifica se já existe notificação recente
+          const existente = await tx.notification.findFirst({
+            where: {
+              prestadorId: prestadorId,
+              id_pedido: card.id_pedido,
+              status: 'NEW_CARD',
+              createdAt: {
+                gte: new Date(Date.now() - 30 * 60 * 1000), // Últimos 30 minutos
+              },
+            },
+          });
 
-      // ✅ 6. PAYLOAD DO PUSH (constante para todos)
+          // Se já existe, retorna e não cria nova
+          if (existente) {
+            this.logger.log(
+              `⏭️ Notificação já existe para prestador ${prestadorId} e card ${card.id_pedido} (ID: ${existente.id})`,
+            );
+            return existente;
+          }
+
+          // Se não existe, cria UMA nova
+          const novaNotificacao = await tx.notification.create({
+            data: {
+              title: '🎯 NOVO PEDIDO DISPONÍVEL!',
+              body: `${card.categoria} - R$ ${card.valor} - ${card.city}, ${card.state}`,
+              icon: '/assets/icons/icon-192x192.png',
+              id_pedido: card.id_pedido,
+              prestadorId: prestadorId,
+              read: false,
+              status: 'NEW_CARD',
+              metadata: JSON.stringify({
+                isHeadsUp: true,
+                cardId: card.id_pedido,
+                categoria: card.categoria,
+                valor: card.valor,
+                cidade: card.city,
+              }),
+            },
+          });
+
+          this.logger.log(
+            `📝 Notificação criada para prestador ${prestadorId} (ID: ${novaNotificacao.id})`,
+          );
+
+          return novaNotificacao;
+        },
+      );
+
+      // Se a notificação já existia (foi encontrada), marca como não criada
+      const notificacaoCriada =
+        notificacaoExistente.id === undefined ||
+        notificacaoExistente.createdAt < new Date(Date.now() - 5 * 1000); // Se criada há menos de 5 segundos
+
+      // ✅ 5. Envia push para todos os dispositivos do prestador (independente de ter criado notificação)
+      let pushEnviados = 0;
+      let algumPushSucesso = false;
+
+      // Prepara payload
       const pushPayload = {
         title: '🎯 NOVO PEDIDO DISPONÍVEL!',
         body: `${card.categoria} - R$ ${card.valor} - ${card.city}, ${card.state}`,
         icon: '/assets/icons/icon-192x192.png',
         badge: '/assets/icons/badge-72x72.png',
         requireInteraction: true,
-        tag: `new-card-${cardId}-${Date.now()}`, // Tag única
-        renotify: true,
-        vibrate: [300, 100, 400, 100, 400],
+        tag: `new-card-${card.id_pedido}-${prestadorId}-${Date.now()}`,
         data: {
-          id_pedido: cardId,
+          id_pedido: card.id_pedido,
           url: '/tudu-professional/home',
-          categoria: card.categoria,
-          valor: card.valor,
-          cidade: card.city,
-          imagens,
-          isHeadsUp: true,
-          timestamp: new Date().toISOString(),
           status: 'NEW_CARD',
         },
-        actions: [
-          {
-            action: 'open',
-            title: '📱 Abrir App',
-            icon: '/assets/icons/open-72x72.png',
-          },
-          {
-            action: 'view_card',
-            title: '👀 Ver Pedido',
-            icon: '/assets/icons/eye-72x72.png',
-          },
-        ],
       };
 
-      const resultados = [];
-      let totalPushEnviados = 0;
-
-      // ✅ 7. PROCESSAMENTO POR PRESTADOR (APENAS ENVIO DE PUSH, SEM CRIAR NOTIFICAÇÕES)
-      for (const prestadorId of prestadoresIds) {
-        // Busca todas as subscriptions deste prestador
-        const subscriptions = await this.prisma.userSubscription.findMany({
-          where: { prestadorId },
-        });
-
-        if (subscriptions.length === 0) continue;
-
-        // Envia push para todos os dispositivos do prestador
-        let pushEnviados = 0;
-        for (const subscription of subscriptions) {
-          try {
-            const subData = JSON.parse(subscription.subscriptionJson);
-            await webpush.sendNotification(
-              subData,
-              JSON.stringify(pushPayload),
-            );
-            pushEnviados++;
-            totalPushEnviados++;
-          } catch (err) {
-            this.logger.error(`❌ Erro push prestador ${prestadorId}:`, err);
-          }
+      for (const subscription of subscriptionsDoPrestador) {
+        try {
+          const subData = JSON.parse(subscription.subscriptionJson);
+          await webpush.sendNotification(subData, JSON.stringify(pushPayload));
+          pushEnviados++;
+          algumPushSucesso = true;
+        } catch (err) {
+          this.logger.error(
+            `❌ Erro no push para prestador ${prestadorId}:`,
+            err instanceof Error ? err.message : err,
+          );
         }
-
-        resultados.push({
-          prestadorId,
-          pushEnviados,
-          totalDispositivos: subscriptions.length,
-        });
-
-        // Pequena pausa para evitar sobrecarga
-        await new Promise((resolve) => setTimeout(resolve, 10));
       }
 
-      // ✅ 8. LOG FINAL
-      this.logger.log(
-        `🎉 FINALIZADO: 1 notificação global criada (ID: ${cardGlobalNotification.id}), ` +
-          `${totalPushEnviados} pushes enviados para ${prestadoresIds.length} prestadores`,
-      );
-
-      return {
-        success: true,
-        totalPrestadores: prestadoresIds.length,
-        globalNotificationId: cardGlobalNotification.id,
-        totalPushEnviados,
-        cardId,
-        resultados,
-      };
-    } finally {
-      // ✅ 9. LIBERA O LOCK (IMPORTANTE!)
-      this.processingCards.delete(cardId);
-      this.logger.log(
-        `🔓 [UNLOCKED] Processamento do card ${cardId} finalizado`,
-      );
+      resultados.push({
+        prestadorId,
+        notificacaoCriada: notificacaoCriada,
+        pushEnviados,
+        totalDispositivos,
+        sucesso: algumPushSucesso,
+      });
     }
-  }
 
+    // ✅ 6. Estatísticas
+    const totalPrestadores = prestadoresUnicos.length;
+    const notificacoesCriadas = resultados.filter(
+      (r) => r.notificacaoCriada,
+    ).length;
+    const totalPushEnviados = resultados.reduce(
+      (sum, r) => sum + r.pushEnviados,
+      0,
+    );
+
+    this.logger.log(
+      `🎉 FINAL: ${notificacoesCriadas} notificações criadas para ${totalPrestadores} prestadores, ` +
+        `${totalPushEnviados} pushes enviados`,
+    );
+
+    return {
+      success: notificacoesCriadas > 0,
+      totalPrestadores,
+      notificacoesCriadas,
+      totalPushEnviados,
+      resultadosDetalhados: resultados,
+    };
+  }
   /** ------------------------------------------------------------------
-   *  🔔 ENVIA PUSH PARA NOVA CANDIDATURA (COM DEDUPLICAÇÃO)
+   *  🔔 ENVIA PUSH PARA NOVA CANDIDATURA
    *  ------------------------------------------------------------------ */
   async enviarPushNovaCandidatura(
     clienteId: number,
@@ -608,129 +571,107 @@ export class NotificationsService {
     isAtualizacao: boolean = false,
   ) {
     try {
-      const status = isAtualizacao ? 'CANDIDATURE_UPDATED' : 'NEW_CANDIDATURE';
-
-      // ✅ 1. Verifica se já existe notificação recente
-      const existingNotification = await this.prisma.notification.findFirst({
-        where: {
-          clienteId,
-          id_pedido,
-          status,
-          createdAt: {
-            gte: new Date(Date.now() - 2 * 60 * 1000), // Últimos 2 minutos
-          },
-        },
-      });
-
-      let notification;
-
-      if (existingNotification) {
-        this.logger.log(
-          `ℹ Notificação já existe para cliente ${clienteId} e card ${id_pedido}`,
-        );
-        notification = existingNotification;
-      } else {
-        // ✅ 2. BUSCA IMAGENS DO CARD
-        let imagens: string[] = [];
-        if (id_pedido) {
-          const cardWithImages = await this.prisma.card.findUnique({
-            where: { id_pedido },
-            include: {
-              imagens: {
-                select: { url: true },
-                orderBy: { createdAt: 'asc' },
-              },
-            },
-          });
-
-          if (cardWithImages && cardWithImages.imagens.length > 0) {
-            imagens = cardWithImages.imagens.map((img) => img.url);
-          }
-        }
-
-        // ✅ 3. Prepara dados da notificação
-        const title = isAtualizacao
-          ? '📝 Proposta atualizada'
-          : '📨 Nova candidatura';
-
-        const body = isAtualizacao
-          ? `${prestador.nome} mandou nova proposta de R$ ${candidatura.valor_negociado}`
-          : `${prestador.nome} ofereceu R$ ${candidatura.valor_negociado}`;
-
-        // ✅ 4. Cria APENAS UMA notificação no banco
-        notification = await this.prisma.notification.create({
-          data: {
-            title,
-            body,
-            icon: '/assets/icons/icon-192x192.png',
-            id_pedido,
-            clienteId,
-            status,
-            metadata: JSON.stringify({
-              imagens,
-              isAtualizacao,
-              prestadorNome: prestador.nome,
-              valorProposta: candidatura.valor_negociado,
-            }),
-          },
-        });
-      }
-
-      // ✅ 5. Busca subscriptions do cliente para envio de push
+      // ✅ 1. Busca subscriptions do cliente
       const subs = await this.prisma.userSubscription.findMany({
         where: { clienteId },
       });
 
-      // ✅ 6. Se não há subscriptions, retorna (notificação já está salva)
-      if (!subs.length) {
-        this.logger.log(
-          `ℹ Notificação salva no banco. Cliente ${clienteId} sem subscription para push.`,
-        );
-        return notification;
+      // ✅ 2. BUSCA IMAGENS DO CARD
+      let imagens: string[] = [];
+      if (id_pedido) {
+        const cardWithImages = await this.prisma.card.findUnique({
+          where: { id_pedido },
+          include: {
+            imagens: {
+              select: { url: true },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+
+        if (cardWithImages && cardWithImages.imagens.length > 0) {
+          imagens = cardWithImages.imagens.map((img) => img.url);
+        }
       }
 
-      // ✅ 7. Prepara payload do push
+      // ✅ 3. Prepara dados da notificação
+      const title = isAtualizacao
+        ? '📝 Proposta atualizada'
+        : '📨 Nova candidatura';
+
+      const body = isAtualizacao
+        ? `${prestador.nome} mandou nova proposta de R$ ${candidatura.valor_negociado}`
+        : `${prestador.nome} ofereceu R$ ${candidatura.valor_negociado}`;
+
       const pushBody = isAtualizacao
         ? `${prestador.nome} te fez uma nova proposta.`
         : `${prestador.nome} enviou uma proposta no seu pedido.`;
 
+      const status = isAtualizacao ? 'CANDIDATURE_UPDATED' : 'NEW_CANDIDATURE';
+
+      // ✅ 4. SEMPRE salva a notificação no banco
+      await this.prisma.notification.create({
+        data: {
+          title: title,
+          body: body,
+          icon: '/assets/icons/icon-192x192.png',
+          id_pedido: id_pedido,
+          clienteId,
+          status: status,
+          metadata: JSON.stringify({
+            imagens,
+            isAtualizacao,
+            prestadorNome: prestador.nome,
+            valorProposta: candidatura.valor_negociado,
+          }),
+        },
+      });
+
+      // ✅ 5. Se não há subscriptions, retorna (notificação já está salva)
+      if (!subs.length) {
+        console.log(
+          `ℹ Notificação salva no banco. Cliente ${clienteId} sem subscription para push.`,
+        );
+        return;
+      }
+
+      // ✅ 6. Prepara payload do push
       const payload = JSON.stringify({
-        title: isAtualizacao ? '📝 Proposta atualizada' : '📨 Nova candidatura',
+        title: title,
         body: pushBody,
         icon: '/assets/icons/icon-192x192.png',
         url: this.buildNotificationUrl(id_pedido),
         data: {
-          id_pedido,
+          id_pedido: id_pedido,
           type: isAtualizacao ? 'CANDIDATURA_ATUALIZADA' : 'NEW_CANDIDATURE',
-          isAtualizacao,
-          status,
+          isAtualizacao: isAtualizacao,
+          imagens,
+          status: status,
         },
       });
 
-      // ✅ 8. Envia push para todas as subscriptions
-      let pushEnviados = 0;
+      // ✅ 7. Envia push para todas as subscriptions
       for (const s of subs) {
         const sub = JSON.parse(s.subscriptionJson);
+
         try {
           await webpush.sendNotification(sub, payload);
-          pushEnviados++;
+          console.log(
+            `✅ Push ${isAtualizacao ? 'atualização' : 'nova'} enviado com id_pedido:`,
+            id_pedido,
+            `e ${imagens.length} imagens`,
+          );
         } catch (err) {
-          this.logger.error('❌ Erro enviando push:', err);
+          console.error('❌ Erro enviando push:', err);
         }
       }
-
-      this.logger.log(
-        `✅ ${pushEnviados} pushes enviados para cliente ${clienteId}`,
-      );
-      return notification;
     } catch (err) {
-      this.logger.error('❌ Erro enviarPushNovaCandidatura:', err);
-      throw err;
+      console.error('❌ Erro enviarPushNovaCandidatura:', err);
     }
   }
 
   /** ------------------------------------------------------------------
-   *  🔔 NOTIFICA CLIENTE SOBRE CONTRATAÇÃO (COM DEDUPLICAÇÃO)
+   *  🔔 NOTIFICA CLIENTE SOBRE CONTRATAÇÃO
    *  ------------------------------------------------------------------ */
   async notificarClienteContratacao(
     clienteId: number,
@@ -739,114 +680,88 @@ export class NotificationsService {
     card: any,
   ) {
     try {
-      // ✅ 1. Verifica se já existe notificação recente
-      const existingNotification = await this.prisma.notification.findFirst({
-        where: {
-          clienteId,
-          id_pedido,
-          status: 'HIRE_CONFIRMED',
-          createdAt: {
-            gte: new Date(Date.now() - 2 * 60 * 1000), // Últimos 2 minutos
-          },
-        },
-      });
-
-      let notification;
-
-      if (existingNotification) {
-        this.logger.log(
-          `ℹ Notificação de contratação já existe para cliente ${clienteId}`,
-        );
-        notification = existingNotification;
-      } else {
-        // ✅ 2. BUSCA IMAGENS DO CARD
-        let imagens: string[] = [];
-        if (id_pedido) {
-          const cardWithImages = await this.prisma.card.findUnique({
-            where: { id_pedido },
-            include: {
-              imagens: {
-                select: { url: true },
-                orderBy: { createdAt: 'asc' },
-              },
-            },
-          });
-
-          if (cardWithImages && cardWithImages.imagens.length > 0) {
-            imagens = cardWithImages.imagens.map((img) => img.url);
-          }
-        }
-
-        // ✅ 3. Cria APENAS UMA notificação no banco
-        notification = await this.prisma.notification.create({
-          data: {
-            title: `🎉 Contratação confirmada!`,
-            body: `${prestador.nome} foi contratado para o seu serviço.`,
-            icon: '/assets/icons/icon-192x192.png',
-            id_pedido,
-            clienteId,
-            status: 'HIRE_CONFIRMED',
-            metadata: JSON.stringify({
-              imagens,
-              prestadorNome: prestador.nome,
-              categoria: card.categoria,
-            }),
-          },
-        });
-      }
-
-      // ✅ 4. Busca subscriptions do cliente
+      // ✅ 1. Busca subscriptions do cliente
       const subs = await this.prisma.userSubscription.findMany({
         where: { clienteId },
       });
 
-      // ✅ 5. Se não há subscriptions, retorna
-      if (!subs.length) {
-        this.logger.log(
-          `ℹ Notificação de contratação salva no banco. Cliente ${clienteId} sem subscription para push.`,
-        );
-        return notification;
+      // ✅ 2. BUSCA IMAGENS DO CARD
+      let imagens: string[] = [];
+      if (id_pedido) {
+        const cardWithImages = await this.prisma.card.findUnique({
+          where: { id_pedido },
+          include: {
+            imagens: {
+              select: { url: true },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+
+        if (cardWithImages && cardWithImages.imagens.length > 0) {
+          imagens = cardWithImages.imagens.map((img) => img.url);
+        }
       }
 
-      // ✅ 6. Prepara e envia push
+      // ✅ 3. SEMPRE salva a notificação no banco
+      await this.prisma.notification.create({
+        data: {
+          title: `🎉 Contratação confirmada!`,
+          body: `${prestador.nome} foi contratado para o seu serviço.`,
+          icon: '/assets/icons/icon-192x192.png',
+          id_pedido: id_pedido,
+          clienteId,
+          status: 'HIRE_CONFIRMED',
+          metadata: JSON.stringify({
+            imagens,
+            prestadorNome: prestador.nome,
+            categoria: card.categoria,
+          }),
+        },
+      });
+
+      // ✅ 4. Se não há subscriptions, retorna
+      if (!subs.length) {
+        console.log(
+          `ℹ Notificação de contratação salva no banco. Cliente ${clienteId} sem subscription para push.`,
+        );
+        return;
+      }
+
+      // ✅ 5. Prepara e envia push
       const payload = JSON.stringify({
         title: '🎉 Contratação confirmada!',
         body: `Seu pedido está em andamento com ${prestador.nome}.`,
         icon: '/assets/icons/icon-192x192.png',
         url: this.buildNotificationUrl(id_pedido),
         data: {
-          id_pedido,
+          id_pedido: id_pedido,
           type: 'CONTRATACAO_CONFIRMADA',
+          imagens,
           status: 'HIRE_CONFIRMED',
         },
       });
 
-      let pushEnviados = 0;
       for (const s of subs) {
         const sub = JSON.parse(s.subscriptionJson);
         try {
           await webpush.sendNotification(sub, payload);
-          pushEnviados++;
-        } catch (err) {
-          this.logger.error(
-            '❌ Erro enviando notificação de contratação:',
-            err,
+          console.log(
+            '✅ Push de contratação enviado para cliente com',
+            imagens.length,
+            'imagens',
           );
+        } catch (err) {
+          console.error('❌ Erro enviando notificação de contratação:', err);
         }
       }
-
-      this.logger.log(
-        `✅ ${pushEnviados} pushes de contratação enviados para cliente ${clienteId}`,
-      );
-      return notification;
     } catch (err) {
-      this.logger.error('❌ Erro notificarClienteContratacao:', err);
-      throw err;
+      console.error('❌ Erro notificarClienteContratacao:', err);
     }
   }
 
   /** ------------------------------------------------------------------
-   *  🔔 NOTIFICA PRESTADOR SOBRE CONTRATAÇÃO (COM DEDUPLICAÇÃO)
+   *  🔔 NOTIFICA PRESTADOR SOBRE CONTRATAÇÃO
    *  ------------------------------------------------------------------ */
   async notificarPrestadorContratacao(
     prestadorId: number,
@@ -854,113 +769,87 @@ export class NotificationsService {
     card: any,
   ) {
     try {
-      // ✅ 1. Verifica se já existe notificação recente
-      const existingNotification = await this.prisma.notification.findFirst({
-        where: {
-          prestadorId,
-          id_pedido,
-          status: 'PROVIDER_HIRED',
-          createdAt: {
-            gte: new Date(Date.now() - 2 * 60 * 1000), // Últimos 2 minutos
-          },
-        },
-      });
-
-      let notification;
-
-      if (existingNotification) {
-        this.logger.log(
-          `ℹ Notificação de contratação já existe para prestador ${prestadorId}`,
-        );
-        notification = existingNotification;
-      } else {
-        // ✅ 2. BUSCA IMAGENS DO CARD
-        let imagens: string[] = [];
-        if (id_pedido) {
-          const cardWithImages = await this.prisma.card.findUnique({
-            where: { id_pedido },
-            include: {
-              imagens: {
-                select: { url: true },
-                orderBy: { createdAt: 'asc' },
-              },
-            },
-          });
-
-          if (cardWithImages && cardWithImages.imagens.length > 0) {
-            imagens = cardWithImages.imagens.map((img) => img.url);
-          }
-        }
-
-        // ✅ 3. Cria APENAS UMA notificação no banco
-        notification = await this.prisma.notification.create({
-          data: {
-            title: `🚀 Você foi contratado!`,
-            body: `Parabéns! Você foi selecionado para o serviço de ${card.categoria}.`,
-            icon: '/assets/icons/icon-192x192.png',
-            id_pedido,
-            prestadorId,
-            status: 'PROVIDER_HIRED',
-            metadata: JSON.stringify({
-              imagens,
-              categoria: card.categoria,
-            }),
-          },
-        });
-      }
-
-      // ✅ 4. Busca subscriptions do prestador
+      // ✅ 1. Busca subscriptions do prestador
       const subs = await this.prisma.userSubscription.findMany({
         where: { prestadorId },
       });
 
-      // ✅ 5. Se não há subscriptions, retorna
-      if (!subs.length) {
-        this.logger.log(
-          `ℹ Notificação de contratação salva no banco. Prestador ${prestadorId} sem subscription para push.`,
-        );
-        return notification;
+      // ✅ 2. BUSCA IMAGENS DO CARD
+      let imagens: string[] = [];
+      if (id_pedido) {
+        const cardWithImages = await this.prisma.card.findUnique({
+          where: { id_pedido },
+          include: {
+            imagens: {
+              select: { url: true },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+
+        if (cardWithImages && cardWithImages.imagens.length > 0) {
+          imagens = cardWithImages.imagens.map((img) => img.url);
+        }
       }
 
-      // ✅ 6. Prepara e envia push
+      // ✅ 3. SEMPRE salva a notificação no banco
+      await this.prisma.notification.create({
+        data: {
+          title: `🚀 Você foi contratado!`,
+          body: `Parabéns! Você foi selecionado para o serviço de ${card.categoria}.`,
+          icon: '/assets/icons/icon-192x192.png',
+          id_pedido: id_pedido,
+          prestadorId,
+          status: 'PROVIDER_HIRED',
+          metadata: JSON.stringify({
+            imagens,
+            categoria: card.categoria,
+          }),
+        },
+      });
+
+      // ✅ 4. Se não há subscriptions, retorna
+      if (!subs.length) {
+        console.log(
+          `ℹ Notificação de contratação salva no banco. Prestador ${prestadorId} sem subscription para push.`,
+        );
+        return;
+      }
+
+      // ✅ 5. Prepara e envia push
       const payload = JSON.stringify({
         title: '🚀 Você foi contratado!',
         body: `Seu serviço de ${card.categoria} está aguardando confirmação.`,
         icon: '/assets/icons/icon-192x192.png',
         url: '/tudu-professional/home',
         data: {
-          id_pedido,
+          id_pedido: id_pedido,
           type: 'PRESTADOR_CONTRATADO',
+          imagens,
           status: 'PROVIDER_HIRED',
         },
       });
 
-      let pushEnviados = 0;
       for (const s of subs) {
         const sub = JSON.parse(s.subscriptionJson);
         try {
           await webpush.sendNotification(sub, payload);
-          pushEnviados++;
-        } catch (err) {
-          this.logger.error(
-            '❌ Erro enviando notificação para prestador:',
-            err,
+          console.log(
+            '✅ Push de contratação enviado para prestador com',
+            imagens.length,
+            'imagens',
           );
+        } catch (err) {
+          console.error('❌ Erro enviando notificação para prestador:', err);
         }
       }
-
-      this.logger.log(
-        `✅ ${pushEnviados} pushes de contratação enviados para prestador ${prestadorId}`,
-      );
-      return notification;
     } catch (err) {
-      this.logger.error('❌ Erro notificarPrestadorContratacao:', err);
-      throw err;
+      console.error('❌ Erro notificarPrestadorContratacao:', err);
     }
   }
 
   /** ------------------------------------------------------------------
-   *  🔔 NOTIFICA CLIENTE E PRESTADOR SOBRE SERVIÇO FINALIZADO (COM DEDUPLICAÇÃO)
+   *  🔔 NOTIFICA CLIENTE E PRESTADOR SOBRE SERVIÇO FINALIZADO
    *  ------------------------------------------------------------------ */
   async notificarServicoFinalizado(id_pedido: string, card: any) {
     try {
@@ -974,7 +863,7 @@ export class NotificationsService {
       });
 
       if (!cardCompleto) {
-        this.logger.error(`❌ Card ${id_pedido} não encontrado`);
+        console.error(`❌ Card ${id_pedido} não encontrado`);
         return;
       }
 
@@ -996,41 +885,27 @@ export class NotificationsService {
 
       // 🔔 NOTIFICA O CLIENTE
       if (cardCompleto.id_cliente) {
-        // Verifica se já existe notificação recente
-        const existingNotification = await this.prisma.notification.findFirst({
-          where: {
-            clienteId: cardCompleto.id_cliente,
-            id_pedido,
-            status: 'SERVICE_COMPLETED',
-            createdAt: {
-              gte: new Date(Date.now() - 2 * 60 * 1000), // Últimos 2 minutos
-            },
-          },
-        });
-
-        if (!existingNotification) {
-          // Cria APENAS UMA notificação no banco para o cliente
-          await this.prisma.notification.create({
-            data: {
-              title: `✅ Serviço concluído!`,
-              body: `Seu serviço de ${card.categoria} foi finalizado com sucesso.`,
-              icon: '/assets/icons/icon-192x192.png',
-              id_pedido,
-              clienteId: cardCompleto.id_cliente,
-              status: 'SERVICE_COMPLETED',
-              metadata: JSON.stringify({
-                imagens,
-                categoria: card.categoria,
-              }),
-            },
-          });
-        }
-
-        // Envia push se houver subscriptions
         const subsCliente = await this.prisma.userSubscription.findMany({
           where: { clienteId: cardCompleto.id_cliente },
         });
 
+        // ✅ SEMPRE salva a notificação no banco para o cliente
+        await this.prisma.notification.create({
+          data: {
+            title: `✅ Serviço concluído!`,
+            body: `Seu serviço de ${card.categoria} foi finalizado com sucesso.`,
+            icon: '/assets/icons/icon-192x192.png',
+            id_pedido: id_pedido,
+            clienteId: cardCompleto.id_cliente,
+            status: 'SERVICE_COMPLETED',
+            metadata: JSON.stringify({
+              imagens,
+              categoria: card.categoria,
+            }),
+          },
+        });
+
+        // ✅ Se houver subscriptions, envia push
         if (subsCliente.length > 0) {
           const payloadCliente = JSON.stringify({
             title: '✅ Serviço concluído!',
@@ -1038,8 +913,9 @@ export class NotificationsService {
             icon: '/assets/icons/icon-192x192.png',
             url: this.buildNotificationUrl(id_pedido),
             data: {
-              id_pedido,
+              id_pedido: id_pedido,
               type: 'SERVICO_FINALIZADO',
+              imagens,
               status: 'SERVICE_COMPLETED',
             },
           });
@@ -1048,11 +924,9 @@ export class NotificationsService {
             const sub = JSON.parse(s.subscriptionJson);
             try {
               await webpush.sendNotification(sub, payloadCliente);
+              console.log('✅ Push de serviço finalizado enviado para cliente');
             } catch (err) {
-              this.logger.error(
-                '❌ Erro enviando notificação para cliente:',
-                err,
-              );
+              console.error('❌ Erro enviando notificação para cliente:', err);
             }
           }
         }
@@ -1060,41 +934,27 @@ export class NotificationsService {
 
       // 🔔 NOTIFICA O PRESTADOR
       if (cardCompleto.id_prestador) {
-        // Verifica se já existe notificação recente
-        const existingNotification = await this.prisma.notification.findFirst({
-          where: {
-            prestadorId: cardCompleto.id_prestador,
-            id_pedido,
-            status: 'SERVICE_COMPLETED',
-            createdAt: {
-              gte: new Date(Date.now() - 2 * 60 * 1000), // Últimos 2 minutos
-            },
-          },
-        });
-
-        if (!existingNotification) {
-          // Cria APENAS UMA notificação no banco para o prestador
-          await this.prisma.notification.create({
-            data: {
-              title: `🎊 Serviço finalizado!`,
-              body: `Parabéns! Você concluiu o serviço de ${card.categoria} com sucesso.`,
-              icon: '/assets/icons/icon-192x192.png',
-              id_pedido,
-              prestadorId: cardCompleto.id_prestador,
-              status: 'SERVICE_COMPLETED',
-              metadata: JSON.stringify({
-                imagens,
-                categoria: card.categoria,
-              }),
-            },
-          });
-        }
-
-        // Envia push se houver subscriptions
         const subsPrestador = await this.prisma.userSubscription.findMany({
           where: { prestadorId: cardCompleto.id_prestador },
         });
 
+        // ✅ SEMPRE salva a notificação no banco para o prestador
+        await this.prisma.notification.create({
+          data: {
+            title: `🎊 Serviço finalizado!`,
+            body: `Parabéns! Você concluiu o serviço de ${card.categoria} com sucesso.`,
+            icon: '/assets/icons/icon-192x192.png',
+            id_pedido: id_pedido,
+            prestadorId: cardCompleto.id_prestador,
+            status: 'SERVICE_COMPLETED',
+            metadata: JSON.stringify({
+              imagens,
+              categoria: card.categoria,
+            }),
+          },
+        });
+
+        // ✅ Se houver subscriptions, envia push
         if (subsPrestador.length > 0) {
           const payloadPrestador = JSON.stringify({
             title: '🎊 Serviço finalizado!',
@@ -1102,8 +962,9 @@ export class NotificationsService {
             icon: '/assets/icons/icon-192x192.png',
             url: '/tudu-professional/home',
             data: {
-              id_pedido,
+              id_pedido: id_pedido,
               type: 'SERVICO_FINALIZADO',
+              imagens,
               status: 'SERVICE_COMPLETED',
             },
           });
@@ -1112,8 +973,11 @@ export class NotificationsService {
             const sub = JSON.parse(s.subscriptionJson);
             try {
               await webpush.sendNotification(sub, payloadPrestador);
+              console.log(
+                '✅ Push de serviço finalizado enviado para prestador',
+              );
             } catch (err) {
-              this.logger.error(
+              console.error(
                 '❌ Erro enviando notificação para prestador:',
                 err,
               );
@@ -1122,16 +986,16 @@ export class NotificationsService {
         }
       }
 
-      this.logger.log(
+      console.log(
         `✅ Notificações de serviço finalizado processadas para card ${id_pedido}`,
       );
     } catch (err) {
-      this.logger.error('❌ Erro notificarServicoFinalizado:', err);
+      console.error('❌ Erro notificarServicoFinalizado:', err);
     }
   }
 
   /** ------------------------------------------------------------------
-   *  🔔 NOTIFICA CANDIDATURA RECUSADA (COM DEDUPLICAÇÃO)
+   *  🔔 NOTIFICA CANDIDATURA RECUSADA
    *  ------------------------------------------------------------------ */
   async notificarCandidaturaRecusada(
     prestadorId: number,
@@ -1139,47 +1003,28 @@ export class NotificationsService {
     card: any,
   ) {
     try {
-      // ✅ 1. Verifica se já existe notificação recente
-      const existingNotification = await this.prisma.notification.findFirst({
-        where: {
-          prestadorId,
-          id_pedido,
-          status: 'CANDIDATURE_REJECTED',
-          createdAt: {
-            gte: new Date(Date.now() - 2 * 60 * 1000), // Últimos 2 minutos
-          },
-        },
-      });
-
-      if (existingNotification) {
-        this.logger.log(
-          `ℹ Notificação de recusa já existe para prestador ${prestadorId}`,
-        );
-        return existingNotification;
-      }
-
-      // ✅ 2. Cria APENAS UMA notificação no banco
-      const notification = await this.prisma.notification.create({
+      // ✅ SEMPRE salva a notificação no banco
+      await this.prisma.notification.create({
         data: {
           title: `📝 Proposta não selecionada`,
           body: `Sua proposta para ${card.categoria} não foi selecionada. Faça uma nova proposta!`,
           icon: '/assets/icons/icon-192x192.png',
-          id_pedido,
+          id_pedido: id_pedido,
           prestadorId,
           status: 'CANDIDATURE_REJECTED',
         },
       });
 
-      // ✅ 3. Busca subscriptions para push (se existirem)
+      // ✅ Busca subscriptions para push (se existirem)
       const subs = await this.prisma.userSubscription.findMany({
         where: { prestadorId },
       });
 
       if (!subs.length) {
-        this.logger.log(
+        console.log(
           `ℹ Notificação de recusa salva no banco. Prestador ${prestadorId} sem subscription para push.`,
         );
-        return notification;
+        return;
       }
 
       const payload = JSON.stringify({
@@ -1188,35 +1033,28 @@ export class NotificationsService {
         icon: '/assets/icons/icon-192x192.png',
         url: '/tudu-professional/home',
         data: {
-          id_pedido,
+          id_pedido: id_pedido,
           type: 'CANDIDATURA_RECUSADA',
           status: 'CANDIDATURE_REJECTED',
         },
       });
 
-      let pushEnviados = 0;
       for (const s of subs) {
         const sub = JSON.parse(s.subscriptionJson);
         try {
           await webpush.sendNotification(sub, payload);
-          pushEnviados++;
+          console.log('✅ Push de candidatura recusada enviado');
         } catch (err) {
-          this.logger.error('❌ Erro enviando notificação de recusa:', err);
+          console.error('❌ Erro enviando notificação de recusa:', err);
         }
       }
-
-      this.logger.log(
-        `✅ ${pushEnviados} pushes de candidatura recusada enviados para prestador ${prestadorId}`,
-      );
-      return notification;
     } catch (err) {
-      this.logger.error('❌ Erro notificarCandidaturaRecusada:', err);
-      throw err;
+      console.error('❌ Erro notificarCandidaturaRecusada:', err);
     }
   }
 
   /** ------------------------------------------------------------------
-   *  🔔 NOTIFICA PRESTADORES CANDIDATOS SOBRE CANCELAMENTO (COM DEDUPLICAÇÃO)
+   *  🔔 NOTIFICA PRESTADORES CANDIDATOS SOBRE CANCELAMENTO
    *  ------------------------------------------------------------------ */
   async notificarPrestadoresCancelamentoCard(
     candidaturas: any[],
@@ -1239,37 +1077,18 @@ export class NotificationsService {
         return unique;
       }, []);
 
-      this.logger.log(
+      console.log(
         `📢 Processando notificações para ${prestadoresUnicos.length} prestadores sobre cancelamento`,
       );
 
       for (const prestador of prestadoresUnicos) {
-        // ✅ 1. Verifica se já existe notificação recente para este prestador
-        const existingNotification = await this.prisma.notification.findFirst({
-          where: {
-            prestadorId: prestador.id_prestador,
-            id_pedido,
-            status: 'CARD_CANCELLED',
-            createdAt: {
-              gte: new Date(Date.now() - 2 * 60 * 1000), // Últimos 2 minutos
-            },
-          },
-        });
-
-        if (existingNotification) {
-          this.logger.log(
-            `ℹ Notificação de cancelamento já existe para prestador ${prestador.id_prestador}`,
-          );
-          continue;
-        }
-
-        // ✅ 2. Cria APENAS UMA notificação no banco para cada prestador
+        // ✅ SEMPRE salva a notificação no banco para cada prestador
         await this.prisma.notification.create({
           data: {
             title: `❌ Pedido cancelado`,
             body: `O pedido de ${card.categoria} que você se candidatou foi cancelado.`,
             icon: '/assets/icons/icon-192x192.png',
-            id_pedido,
+            id_pedido: id_pedido,
             prestadorId: prestador.id_prestador,
             status: 'CARD_CANCELLED',
             metadata: JSON.stringify({
@@ -1279,13 +1098,13 @@ export class NotificationsService {
           },
         });
 
-        // ✅ 3. Busca subscriptions para push
+        // ✅ Busca subscriptions para push
         const subs = await this.prisma.userSubscription.findMany({
           where: { prestadorId: prestador.id_prestador },
         });
 
         if (!subs.length) {
-          this.logger.log(
+          console.log(
             `ℹ Notificação de cancelamento salva no banco para prestador ${prestador.id_prestador}`,
           );
           continue;
@@ -1297,7 +1116,7 @@ export class NotificationsService {
           icon: '/assets/icons/icon-192x192.png',
           url: '/tudu-professional/home',
           data: {
-            id_pedido,
+            id_pedido: id_pedido,
             type: 'CARD_CANCELADO',
             categoria: card.categoria,
             status: 'CARD_CANCELLED',
@@ -1308,8 +1127,11 @@ export class NotificationsService {
           const sub = JSON.parse(s.subscriptionJson);
           try {
             await webpush.sendNotification(sub, payload);
+            console.log(
+              `✅ Push de cancelamento enviado para prestador ${prestador.id_prestador}`,
+            );
           } catch (err) {
-            this.logger.error(
+            console.error(
               `❌ Erro enviando push para prestador ${prestador.id_prestador}:`,
               err,
             );
@@ -1317,12 +1139,12 @@ export class NotificationsService {
         }
       }
     } catch (err) {
-      this.logger.error('❌ Erro notificarPrestadoresCancelamentoCard:', err);
+      console.error('❌ Erro notificarPrestadoresCancelamentoCard:', err);
     }
   }
 
   /** ------------------------------------------------------------------
-   *  🔔 NOTIFICA PRESTADOR CONTRATADO SOBRE CANCELAMENTO (COM DEDUPLICAÇÃO)
+   *  🔔 NOTIFICA PRESTADOR CONTRATADO SOBRE CANCELAMENTO
    *  ------------------------------------------------------------------ */
   async notificarPrestadorContratadoCancelamento(
     prestadorId: number,
@@ -1330,47 +1152,28 @@ export class NotificationsService {
     card: any,
   ) {
     try {
-      // ✅ 1. Verifica se já existe notificação recente
-      const existingNotification = await this.prisma.notification.findFirst({
-        where: {
-          prestadorId,
-          id_pedido,
-          status: 'CONTRACT_CANCELLED',
-          createdAt: {
-            gte: new Date(Date.now() - 2 * 60 * 1000), // Últimos 2 minutos
-          },
-        },
-      });
-
-      if (existingNotification) {
-        this.logger.log(
-          `ℹ Notificação de cancelamento de contrato já existe para prestador ${prestadorId}`,
-        );
-        return existingNotification;
-      }
-
-      // ✅ 2. Cria APENAS UMA notificação no banco
-      const notification = await this.prisma.notification.create({
+      // ✅ SEMPRE salva a notificação no banco
+      await this.prisma.notification.create({
         data: {
           title: `❌ Contrato cancelado`,
           body: `O pedido de ${card.categoria} que você estava executando foi cancelado.`,
           icon: '/assets/icons/icon-192x192.png',
-          id_pedido,
+          id_pedido: id_pedido,
           prestadorId,
           status: 'CONTRACT_CANCELLED',
         },
       });
 
-      // ✅ 3. Busca subscriptions para push
+      // ✅ Busca subscriptions para push
       const subs = await this.prisma.userSubscription.findMany({
         where: { prestadorId },
       });
 
       if (!subs.length) {
-        this.logger.log(
+        console.log(
           `ℹ Notificação de cancelamento de contrato salva no banco para prestador ${prestadorId}`,
         );
-        return notification;
+        return;
       }
 
       const payload = JSON.stringify({
@@ -1379,42 +1182,34 @@ export class NotificationsService {
         icon: '/assets/icons/icon-192x192.png',
         url: '/tudu-professional/home',
         data: {
-          id_pedido,
+          id_pedido: id_pedido,
           type: 'CONTRATO_CANCELADO',
           categoria: card.categoria,
           status: 'CONTRACT_CANCELLED',
         },
       });
 
-      let pushEnviados = 0;
       for (const s of subs) {
         const sub = JSON.parse(s.subscriptionJson);
         try {
           await webpush.sendNotification(sub, payload);
-          pushEnviados++;
+          console.log(
+            `✅ Push de cancelamento de contrato enviado para prestador ${prestadorId}`,
+          );
         } catch (err) {
-          this.logger.error(
+          console.error(
             `❌ Erro enviando push para prestador ${prestadorId}:`,
             err,
           );
         }
       }
-
-      this.logger.log(
-        `✅ ${pushEnviados} pushes de cancelamento de contrato enviados para prestador ${prestadorId}`,
-      );
-      return notification;
     } catch (err) {
-      this.logger.error(
-        '❌ Erro notificarPrestadorContratadoCancelamento:',
-        err,
-      );
-      throw err;
+      console.error('❌ Erro notificarPrestadorContratadoCancelamento:', err);
     }
   }
 
   /** ------------------------------------------------------------------
-   *  🔔 NOTIFICA CLIENTE SOBRE CANCELAMENTO DE CANDIDATURA (COM DEDUPLICAÇÃO)
+   *  🔔 NOTIFICA CLIENTE SOBRE CANCELAMENTO DE CANDIDATURA
    *  ------------------------------------------------------------------ */
   async notificarClienteCancelamentoCandidatura(
     clienteId: number,
@@ -1423,32 +1218,13 @@ export class NotificationsService {
     card: any,
   ) {
     try {
-      // ✅ 1. Verifica se já existe notificação recente
-      const existingNotification = await this.prisma.notification.findFirst({
-        where: {
-          clienteId,
-          id_pedido,
-          status: 'CANDIDATURE_CANCELLED',
-          createdAt: {
-            gte: new Date(Date.now() - 2 * 60 * 1000), // Últimos 2 minutos
-          },
-        },
-      });
-
-      if (existingNotification) {
-        this.logger.log(
-          `ℹ Notificação de cancelamento de candidatura já existe para cliente ${clienteId}`,
-        );
-        return existingNotification;
-      }
-
-      // ✅ 2. Cria APENAS UMA notificação no banco
-      const notification = await this.prisma.notification.create({
+      // ✅ SEMPRE salva a notificação no banco
+      await this.prisma.notification.create({
         data: {
           title: `📝 Candidatura cancelada`,
           body: `${prestador.nome} cancelou a proposta no seu pedido.`,
           icon: '/assets/icons/icon-192x192.png',
-          id_pedido,
+          id_pedido: id_pedido,
           clienteId,
           status: 'CANDIDATURE_CANCELLED',
           metadata: JSON.stringify({
@@ -1458,16 +1234,16 @@ export class NotificationsService {
         },
       });
 
-      // ✅ 3. Busca subscriptions para push
+      // ✅ Busca subscriptions para push
       const subs = await this.prisma.userSubscription.findMany({
         where: { clienteId },
       });
 
       if (!subs.length) {
-        this.logger.log(
+        console.log(
           `ℹ Notificação de cancelamento de candidatura salva no banco para cliente ${clienteId}`,
         );
-        return notification;
+        return;
       }
 
       const payload = JSON.stringify({
@@ -1476,37 +1252,26 @@ export class NotificationsService {
         icon: '/assets/icons/icon-192x192.png',
         url: this.buildNotificationUrl(id_pedido),
         data: {
-          id_pedido,
+          id_pedido: id_pedido,
           type: 'CANDIDATURA_CANCELADA',
           prestadorNome: `${prestador.nome}`,
           status: 'CANDIDATURE_CANCELLED',
         },
       });
 
-      let pushEnviados = 0;
       for (const s of subs) {
         const sub = JSON.parse(s.subscriptionJson);
         try {
           await webpush.sendNotification(sub, payload);
-          pushEnviados++;
-        } catch (err) {
-          this.logger.error(
-            '❌ Erro enviando notificação de cancelamento:',
-            err,
+          console.log(
+            '✅ Push de cancelamento de candidatura enviado para cliente',
           );
+        } catch (err) {
+          console.error('❌ Erro enviando notificação de cancelamento:', err);
         }
       }
-
-      this.logger.log(
-        `✅ ${pushEnviados} pushes de cancelamento de candidatura enviados para cliente ${clienteId}`,
-      );
-      return notification;
     } catch (err) {
-      this.logger.error(
-        '❌ Erro notificarClienteCancelamentoCandidatura:',
-        err,
-      );
-      throw err;
+      console.error('❌ Erro notificarClienteCancelamentoCandidatura:', err);
     }
   }
 
@@ -1609,54 +1374,4 @@ export class NotificationsService {
   private buildNotificationUrl(id_pedido: string): string {
     return `/home/budgets?id=${id_pedido}&flow=publicado`;
   }
-
-  /** ------------------------------------------------------------------
-   *  🐛 DEBUG: VERIFICA NOTIFICAÇÕES DUPLICADAS
-   *  ------------------------------------------------------------------ */
-  // async debugNotificationIssue(cardId: string) {
-  //   const recentNotifications = await this.prisma.notification.findMany({
-  //     where: {
-  //       id_pedido: cardId,
-  //       status: 'NEW_CARD',
-  //       createdAt: {
-  //         gte: new Date(Date.now() - 5 * 60 * 1000), // Últimos 5 minutos
-  //       },
-  //     },
-  //     orderBy: { createdAt: 'desc' },
-  //     include: {
-  //       Prestador: {
-  //         select: { nome: true },
-  //       },
-  //     },
-  //   });
-
-  //   this.logger.log('🔍 DEBUG - Notificações duplicadas encontradas:');
-  //   this.logger.log(`Card: ${cardId}`);
-  //   this.logger.log(`Total notificações: ${recentNotifications.length}`);
-
-  //   // Agrupa por prestador
-  //   const porPrestador = recentNotifications.reduce((acc, notif) => {
-  //     const key = notif.prestadorId || 'null';
-  //     if (!acc[key]) acc[key] = [];
-  //     acc[key].push(notif);
-  //     return acc;
-  //   }, {});
-
-  //   for (const [prestadorId, notifs] of Object.entries(porPrestador)) {
-  //     this.logger.log(
-  //       `\nPrestador ${prestadorId}: ${notifs.length} notificações`,
-  //     );
-  //     notifs.forEach((n: any, i) => {
-  //       this.logger.log(
-  //         `  ${i + 1}. ID: ${n.id}, Criada: ${n.createdAt}, Prestador: ${n.Prestador?.nome}`,
-  //       );
-  //     });
-  //   }
-
-  //   return {
-  //     cardId,
-  //     totalNotifications: recentNotifications.length,
-  //     byPrestador: porPrestador,
-  //   };
-  // }
 }
