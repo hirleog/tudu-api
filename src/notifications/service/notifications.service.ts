@@ -185,13 +185,14 @@ export class NotificationsService {
     });
 
     if (existing) {
-      // Atualiza somente se vier renovado do mesmo navegador
-      return this.prisma.userSubscription.update({
-        where: { id: existing.id },
-        data: { subscriptionJson: JSON.stringify(subscription) },
+      return this.prisma.userSubscription.create({
+        data: {
+          clienteId: safeClienteId,
+          prestadorId: safePrestadorId,
+          subscriptionJson: JSON.stringify(subscription),
+        },
       });
     }
-
     // Sempre cria uma nova subscription para um novo dispositivo
     return this.prisma.userSubscription.create({
       data: {
