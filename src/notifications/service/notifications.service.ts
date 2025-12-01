@@ -167,46 +167,39 @@ export class NotificationsService {
    *  📬 SALVA SUBSCRIPTION DO FRONT-END
    *  ------------------------------------------------------------------ */
   async saveSubscription(clienteId: any, prestadorId: any, subscription: any) {
-    console.log('💾 Salvando subscription:', {
-      clienteId,
-      prestadorId,
-      clienteIdIsNull: clienteId === null,
-      prestadorIdIsNull: prestadorId === null,
-      clienteIdIsUndefined: clienteId === undefined,
-      prestadorIdIsUndefined: prestadorId === undefined,
-    });
-
-    // Converte undefined para null e faz parse de números
     const safeClienteId = this.safeParseId(clienteId);
     const safePrestadorId = this.safeParseId(prestadorId);
 
-    console.log('🔧 IDs após tratamento:', {
-      safeClienteId,
-      safePrestadorId,
-    });
-
-    // Validação corrigida
     if (!safeClienteId && !safePrestadorId) {
       throw new Error('É necessário fornecer clienteId OU prestadorId');
     }
 
-    // CLIENTE
-    if (safeClienteId && !safePrestadorId) {
-      console.log('👤 Salvando para cliente:', safeClienteId);
-
-      return this.saveForCliente(safeClienteId, subscription);
+    const endpoint = subscription?.endpoint;
+    if (!endpoint) {
+      throw new Error('Subscription inválida: faltando endpoint');
     }
 
-    // PRESTADOR
-    if (!safeClienteId && safePrestadorId) {
-      console.log('👷 Salvando para prestador:', safePrestadorId);
+    // Verifica se já existe UMA subscription para o mesmo endpoint
+    const existing = await this.prisma.userSubscription.findFirst({
+      where: { subscriptionJson: { contains: endpoint } },
+    });
 
-      return this.saveForPrestador(safePrestadorId, subscription);
+    if (existing) {
+      // Atualiza somente se vier renovado do mesmo navegador
+      return this.prisma.userSubscription.update({
+        where: { id: existing.id },
+        data: { subscriptionJson: JSON.stringify(subscription) },
+      });
     }
 
-    // Caso ambos preenchidos (raro) - usa cliente como prioridade
-    console.warn('⚠️ Ambos IDs preenchidos, usando cliente como prioridade');
-    return this.saveForCliente(safeClienteId, subscription);
+    // Sempre cria uma nova subscription para um novo dispositivo
+    return this.prisma.userSubscription.create({
+      data: {
+        clienteId: safeClienteId,
+        prestadorId: safePrestadorId,
+        subscriptionJson: JSON.stringify(subscription),
+      },
+    });
   }
 
   private safeParseId(id: any): number | null {
