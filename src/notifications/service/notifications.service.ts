@@ -570,13 +570,37 @@ export class NotificationsService {
     card: any,
     isAtualizacao: boolean = false,
   ) {
+    // ✅ 1. GERA UMA CHAVE ÚNICA PARA ESTE EVENTO
+    const eventKey = `candidatura:${clienteId}:${id_pedido}:${prestador.id}:${isAtualizacao}:${Date.now()}`;
+
+    // ✅ 2. VERIFICA SE JÁ PROCESSAMOS ESTE EVENTO RECENTEMENTE
+    // (Você pode usar Redis, memória ou banco para isso)
+    // Vou usar um Set em memória como exemplo simples
+    const memoryKey = `push_${clienteId}_${id_pedido}_${prestador.id}_${isAtualizacao}`;
+
+    // Se estiver usando Redis (recomendado para produção):
+    // const alreadyProcessed = await this.redis.get(memoryKey);
+
+    // Para simplificar, vamos usar um Map em memória
+    if (this.recentlyProcessed.has(memoryKey)) {
+      console.log(
+        `⏭️ Push já enviado recentemente para este evento: ${memoryKey}`,
+      );
+      return;
+    }
+
     try {
-      // ✅ 1. Busca subscriptions do cliente
+      // Marca como processado
+      this.recentlyProcessed.set(memoryKey, true);
+      // Remove após 10 segundos (para permitir novo envio se necessário)
+      setTimeout(() => this.recentlyProcessed.delete(memoryKey), 10000);
+
+      // ✅ 3. Busca subscriptions do cliente
       const subs = await this.prisma.userSubscription.findMany({
         where: { clienteId },
       });
 
-      // ✅ 2. BUSCA IMAGENS DO CARD
+      // ✅ 4. BUSCA IMAGENS DO CARD
       let imagens: string[] = [];
       if (id_pedido) {
         const cardWithImages = await this.prisma.card.findUnique({
@@ -594,7 +618,7 @@ export class NotificationsService {
         }
       }
 
-      // ✅ 3. Prepara dados da notificação
+      // ✅ 5. Prepara dados da notificação
       const title = isAtualizacao
         ? '📝 Proposta atualizada'
         : '📨 Nova candidatura';
@@ -609,67 +633,120 @@ export class NotificationsService {
 
       const status = isAtualizacao ? 'CANDIDATURE_UPDATED' : 'NEW_CANDIDATURE';
 
-      // ✅ 4. SEMPRE salva a notificação no banco
-      await this.prisma.notification.create({
-        data: {
-          title: title,
-          body: body,
-          icon: '/assets/icons/icon-192x192.png',
-          id_pedido: id_pedido,
+      // ✅ 6. VERIFICA SE JÁ EXISTE NOTIFICAÇÃO NO BANCO
+      const existingNotification = await this.prisma.notification.findFirst({
+        where: {
           clienteId,
-          status: status,
-          metadata: JSON.stringify({
-            imagens,
-            isAtualizacao,
-            prestadorNome: prestador.nome,
-            valorProposta: candidatura.valor_negociado,
-          }),
+          id_pedido,
+          status,
+          createdAt: {
+            gte: new Date(Date.now() - 5 * 60 * 1000), // Últimos 5 minutos
+          },
         },
       });
 
-      // ✅ 5. Se não há subscriptions, retorna (notificação já está salva)
+      let notification;
+
+      if (existingNotification) {
+        console.log(
+          `ℹ Notificação já existe no banco (ID: ${existingNotification.id}). Usando existente.`,
+        );
+        notification = existingNotification;
+      } else {
+        // ✅ 7. Cria nova notificação no banco
+        notification = await this.prisma.notification.create({
+          data: {
+            title: title,
+            body: body,
+            icon: '/assets/icons/icon-192x192.png',
+            id_pedido: id_pedido,
+            clienteId,
+            status: status,
+            metadata: JSON.stringify({
+              imagens,
+              isAtualizacao,
+              prestadorNome: prestador.nome,
+              valorProposta: candidatura.valor_negociado,
+              eventKey, // Salva a chave do evento para rastreamento
+            }),
+          },
+        });
+      }
+
+      // ✅ 8. Se não há subscriptions, retorna
       if (!subs.length) {
         console.log(
           `ℹ Notificação salva no banco. Cliente ${clienteId} sem subscription para push.`,
         );
-        return;
+        return notification;
       }
 
-      // ✅ 6. Prepara payload do push
+      // ✅ 9. Prepara payload do push COM TAG ÚNICA
+      const uniqueTag = `candidatura_${id_pedido}_${prestador.id}_${Date.now()}`;
+
       const payload = JSON.stringify({
         title: title,
         body: pushBody,
         icon: '/assets/icons/icon-192x192.png',
         url: this.buildNotificationUrl(id_pedido),
+        tag: uniqueTag, // ✅ TAG ÚNICA PARA DEDUPLICAÇÃO NO CLIENTE
+        renotify: false, // Não renova notificações com mesma tag
         data: {
           id_pedido: id_pedido,
           type: isAtualizacao ? 'CANDIDATURA_ATUALIZADA' : 'NEW_CANDIDATURE',
           isAtualizacao: isAtualizacao,
           imagens,
           status: status,
+          eventKey, // Para rastreamento
         },
       });
 
-      // ✅ 7. Envia push para todas as subscriptions
+      // ✅ 10. LOG ANTES DE ENVIAR
+      console.log(
+        `📤 Enviando push para ${subs.length} dispositivo(s) do cliente ${clienteId}`,
+      );
+      console.log(`🔑 Event key: ${eventKey}`);
+      console.log(`🏷️ Push tag: ${uniqueTag}`);
+
+      // ✅ 11. Envia push para todas as subscriptions
+      const results = [];
       for (const s of subs) {
         const sub = JSON.parse(s.subscriptionJson);
 
         try {
           await webpush.sendNotification(sub, payload);
+          results.push({ success: true, subscriptionId: s.id });
           console.log(
-            `✅ Push ${isAtualizacao ? 'atualização' : 'nova'} enviado com id_pedido:`,
-            id_pedido,
-            `e ${imagens.length} imagens`,
+            `✅ Push ${isAtualizacao ? 'atualização' : 'nova'} enviado para dispositivo ${s.id}`,
           );
         } catch (err) {
-          console.error('❌ Erro enviando push:', err);
+          results.push({ success: false, subscriptionId: s.id, error: err });
+          console.error(
+            '❌ Erro enviando push para dispositivo',
+            s.id,
+            ':',
+            err,
+          );
         }
       }
+
+      // ✅ 12. LOG DE RESULTADOS
+      const successCount = results.filter((r) => r.success).length;
+      console.log(
+        `📊 Resultado: ${successCount}/${subs.length} pushes enviados com sucesso para cliente ${clienteId}`,
+      );
+
+      return notification;
     } catch (err) {
       console.error('❌ Erro enviarPushNovaCandidatura:', err);
+      // Remove da memória em caso de erro para permitir retry
+      this.recentlyProcessed.delete(memoryKey);
+      throw err;
     }
   }
 
+  // Adicione esta propriedade na classe
+  private recentlyProcessed = new Map<string, boolean>();
   /** ------------------------------------------------------------------
    *  🔔 NOTIFICA CLIENTE SOBRE CONTRATAÇÃO
    *  ------------------------------------------------------------------ */
