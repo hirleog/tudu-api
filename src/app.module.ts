@@ -1,3 +1,4 @@
+import { NotificationLockService } from './notifications/service/notification-lock.service';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -46,6 +47,7 @@ import { NotificationsModule } from './notifications/notifications.module';
   ],
   controllers: [IpDeviceController, InstallmentsController, AppController],
   providers: [
+        NotificationLockService, 
     EmailService,
     VerificationService,
     AppService,
