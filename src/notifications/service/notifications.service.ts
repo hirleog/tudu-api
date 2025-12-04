@@ -166,71 +166,43 @@ export class NotificationsService {
   /** ------------------------------------------------------------------
    *  📬 SALVA SUBSCRIPTION DO FRONT-END
    *  ------------------------------------------------------------------ */
-  // notification-push.service.ts (backend)
   async saveSubscription(clienteId: any, prestadorId: any, subscription: any) {
-    try {
-      const safeClienteId = this.safeParseId(clienteId);
-      const safePrestadorId = this.safeParseId(prestadorId);
+    const safeClienteId = this.safeParseId(clienteId);
+    const safePrestadorId = this.safeParseId(prestadorId);
 
-      if (!safeClienteId && !safePrestadorId) {
-        throw new Error('É necessário fornecer clienteId OU prestadorId');
-      }
+    if (!safeClienteId && !safePrestadorId) {
+      throw new Error('É necessário fornecer clienteId OU prestadorId');
+    }
 
-      const endpoint = subscription?.endpoint;
-      if (!endpoint) {
-        throw new Error('Subscription inválida: faltando endpoint');
-      }
+    const endpoint = subscription?.endpoint;
+    if (!endpoint) {
+      throw new Error('Subscription inválida: faltando endpoint');
+    }
 
-      // ✅ Busca por ENDPOINT (único por dispositivo)
-      const existing = await this.prisma.userSubscription.findFirst({
-        where: {
-          subscriptionJson: {
-            contains: endpoint, // Procura pelo endpoint no JSON
-          },
+    // Verifica se já existe UMA subscription para o mesmo endpoint
+    const existing = await this.prisma.userSubscription.findFirst({
+      where: { subscriptionJson: { contains: endpoint } },
+    });
+
+    if (existing) {
+      return this.prisma.userSubscription.create({
+        data: {
+          clienteId: safeClienteId,
+          prestadorId: safePrestadorId,
+          subscriptionJson: JSON.stringify(subscription),
         },
       });
-
-      let result;
-      let action = 'created';
-
-      if (existing) {
-        // ✅ SE JÁ EXISTE: ATUALIZA
-        console.log(`🔄 Atualizando subscription existente: ${existing.id}`);
-        result = await this.prisma.userSubscription.update({
-          where: { id: existing.id },
-          data: {
-            clienteId: safeClienteId,
-            prestadorId: safePrestadorId,
-            subscriptionJson: JSON.stringify(subscription),
-          },
-        });
-        action = 'updated';
-      } else {
-        // ✅ SE NÃO EXISTE: CRIA NOVA
-        console.log(
-          `🆕 Criando nova subscription para endpoint: ${endpoint.substring(0, 50)}...`,
-        );
-        result = await this.prisma.userSubscription.create({
-          data: {
-            clienteId: safeClienteId,
-            prestadorId: safePrestadorId,
-            subscriptionJson: JSON.stringify(subscription),
-          },
-        });
-      }
-
-      return {
-        success: true,
-        subscriptionId: result.id,
-        action: action,
-        updated: action === 'updated',
-        endpoint: endpoint,
-      };
-    } catch (err) {
-      console.error('Erro no sendSubscriptionToServer:', err);
-      throw err;
     }
+    // Sempre cria uma nova subscription para um novo dispositivo
+    return this.prisma.userSubscription.create({
+      data: {
+        clienteId: safeClienteId,
+        prestadorId: safePrestadorId,
+        subscriptionJson: JSON.stringify(subscription),
+      },
+    });
   }
+
   private safeParseId(id: any): number | null {
     if (
       id === null ||
@@ -598,37 +570,13 @@ export class NotificationsService {
     card: any,
     isAtualizacao: boolean = false,
   ) {
-    // ✅ 1. GERA UMA CHAVE ÚNICA PARA ESTE EVENTO
-    const eventKey = `candidatura:${clienteId}:${id_pedido}:${prestador.id}:${isAtualizacao}:${Date.now()}`;
-
-    // ✅ 2. VERIFICA SE JÁ PROCESSAMOS ESTE EVENTO RECENTEMENTE
-    // (Você pode usar Redis, memória ou banco para isso)
-    // Vou usar um Set em memória como exemplo simples
-    const memoryKey = `push_${clienteId}_${id_pedido}_${prestador.id}_${isAtualizacao}`;
-
-    // Se estiver usando Redis (recomendado para produção):
-    // const alreadyProcessed = await this.redis.get(memoryKey);
-
-    // Para simplificar, vamos usar um Map em memória
-    if (this.recentlyProcessed.has(memoryKey)) {
-      console.log(
-        `⏭️ Push já enviado recentemente para este evento: ${memoryKey}`,
-      );
-      return;
-    }
-
     try {
-      // Marca como processado
-      this.recentlyProcessed.set(memoryKey, true);
-      // Remove após 10 segundos (para permitir novo envio se necessário)
-      setTimeout(() => this.recentlyProcessed.delete(memoryKey), 10000);
-
-      // ✅ 3. Busca subscriptions do cliente
+      // ✅ 1. Busca subscriptions do cliente
       const subs = await this.prisma.userSubscription.findMany({
         where: { clienteId },
       });
 
-      // ✅ 4. BUSCA IMAGENS DO CARD
+      // ✅ 2. BUSCA IMAGENS DO CARD
       let imagens: string[] = [];
       if (id_pedido) {
         const cardWithImages = await this.prisma.card.findUnique({
@@ -646,7 +594,7 @@ export class NotificationsService {
         }
       }
 
-      // ✅ 5. Prepara dados da notificação
+      // ✅ 3. Prepara dados da notificação
       const title = isAtualizacao
         ? '📝 Proposta atualizada'
         : '📨 Nova candidatura';
@@ -661,120 +609,67 @@ export class NotificationsService {
 
       const status = isAtualizacao ? 'CANDIDATURE_UPDATED' : 'NEW_CANDIDATURE';
 
-      // ✅ 6. VERIFICA SE JÁ EXISTE NOTIFICAÇÃO NO BANCO
-      const existingNotification = await this.prisma.notification.findFirst({
-        where: {
+      // ✅ 4. SEMPRE salva a notificação no banco
+      await this.prisma.notification.create({
+        data: {
+          title: title,
+          body: body,
+          icon: '/assets/icons/icon-192x192.png',
+          id_pedido: id_pedido,
           clienteId,
-          id_pedido,
-          status,
-          createdAt: {
-            gte: new Date(Date.now() - 5 * 60 * 1000), // Últimos 5 minutos
-          },
+          status: status,
+          metadata: JSON.stringify({
+            imagens,
+            isAtualizacao,
+            prestadorNome: prestador.nome,
+            valorProposta: candidatura.valor_negociado,
+          }),
         },
       });
 
-      let notification;
-
-      if (existingNotification) {
-        console.log(
-          `ℹ Notificação já existe no banco (ID: ${existingNotification.id}). Usando existente.`,
-        );
-        notification = existingNotification;
-      } else {
-        // ✅ 7. Cria nova notificação no banco
-        notification = await this.prisma.notification.create({
-          data: {
-            title: title,
-            body: body,
-            icon: '/assets/icons/icon-192x192.png',
-            id_pedido: id_pedido,
-            clienteId,
-            status: status,
-            metadata: JSON.stringify({
-              imagens,
-              isAtualizacao,
-              prestadorNome: prestador.nome,
-              valorProposta: candidatura.valor_negociado,
-              eventKey, // Salva a chave do evento para rastreamento
-            }),
-          },
-        });
-      }
-
-      // ✅ 8. Se não há subscriptions, retorna
+      // ✅ 5. Se não há subscriptions, retorna (notificação já está salva)
       if (!subs.length) {
         console.log(
           `ℹ Notificação salva no banco. Cliente ${clienteId} sem subscription para push.`,
         );
-        return notification;
+        return;
       }
 
-      // ✅ 9. Prepara payload do push COM TAG ÚNICA
-      const uniqueTag = `candidatura_${id_pedido}_${prestador.id}_${Date.now()}`;
-
+      // ✅ 6. Prepara payload do push
       const payload = JSON.stringify({
         title: title,
         body: pushBody,
         icon: '/assets/icons/icon-192x192.png',
         url: this.buildNotificationUrl(id_pedido),
-        tag: uniqueTag, // ✅ TAG ÚNICA PARA DEDUPLICAÇÃO NO CLIENTE
-        renotify: false, // Não renova notificações com mesma tag
         data: {
           id_pedido: id_pedido,
           type: isAtualizacao ? 'CANDIDATURA_ATUALIZADA' : 'NEW_CANDIDATURE',
           isAtualizacao: isAtualizacao,
           imagens,
           status: status,
-          eventKey, // Para rastreamento
         },
       });
 
-      // ✅ 10. LOG ANTES DE ENVIAR
-      console.log(
-        `📤 Enviando push para ${subs.length} dispositivo(s) do cliente ${clienteId}`,
-      );
-      console.log(`🔑 Event key: ${eventKey}`);
-      console.log(`🏷️ Push tag: ${uniqueTag}`);
-
-      // ✅ 11. Envia push para todas as subscriptions
-      const results = [];
+      // ✅ 7. Envia push para todas as subscriptions
       for (const s of subs) {
         const sub = JSON.parse(s.subscriptionJson);
 
         try {
           await webpush.sendNotification(sub, payload);
-          results.push({ success: true, subscriptionId: s.id });
           console.log(
-            `✅ Push ${isAtualizacao ? 'atualização' : 'nova'} enviado para dispositivo ${s.id}`,
+            `✅ Push ${isAtualizacao ? 'atualização' : 'nova'} enviado com id_pedido:`,
+            id_pedido,
+            `e ${imagens.length} imagens`,
           );
         } catch (err) {
-          results.push({ success: false, subscriptionId: s.id, error: err });
-          console.error(
-            '❌ Erro enviando push para dispositivo',
-            s.id,
-            ':',
-            err,
-          );
+          console.error('❌ Erro enviando push:', err);
         }
       }
-
-      // ✅ 12. LOG DE RESULTADOS
-      const successCount = results.filter((r) => r.success).length;
-      console.log(
-        `📊 Resultado: ${successCount}/${subs.length} pushes enviados com sucesso para cliente ${clienteId}`,
-      );
-
-      return notification;
     } catch (err) {
       console.error('❌ Erro enviarPushNovaCandidatura:', err);
-      // Remove da memória em caso de erro para permitir retry
-      this.recentlyProcessed.delete(memoryKey);
-      throw err;
     }
   }
 
-  // Adicione esta propriedade na classe
-  private recentlyProcessed = new Map<string, boolean>();
   /** ------------------------------------------------------------------
    *  🔔 NOTIFICA CLIENTE SOBRE CONTRATAÇÃO
    *  ------------------------------------------------------------------ */
