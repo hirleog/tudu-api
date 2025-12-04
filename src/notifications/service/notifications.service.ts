@@ -167,42 +167,69 @@ export class NotificationsService {
    *  📬 SALVA SUBSCRIPTION DO FRONT-END
    *  ------------------------------------------------------------------ */
   async saveSubscription(clienteId: any, prestadorId: any, subscription: any) {
-    const safeClienteId = this.safeParseId(clienteId);
-    const safePrestadorId = this.safeParseId(prestadorId);
+    try {
+      const safeClienteId = this.safeParseId(clienteId);
+      const safePrestadorId = this.safeParseId(prestadorId);
 
-    if (!safeClienteId && !safePrestadorId) {
-      throw new Error('É necessário fornecer clienteId OU prestadorId');
-    }
+      if (!safeClienteId && !safePrestadorId) {
+        throw new Error('É necessário fornecer clienteId OU prestadorId');
+      }
 
-    const endpoint = subscription?.endpoint;
-    if (!endpoint) {
-      throw new Error('Subscription inválida: faltando endpoint');
-    }
+      const endpoint = subscription?.endpoint;
+      if (!endpoint) {
+        throw new Error('Subscription inválida: faltando endpoint');
+      }
 
-    // Verifica se já existe UMA subscription para o mesmo endpoint
-    const existing = await this.prisma.userSubscription.findFirst({
-      where: { subscriptionJson: { contains: endpoint } },
-    });
-
-    if (existing) {
-      return this.prisma.userSubscription.create({
-        data: {
-          clienteId: safeClienteId,
-          prestadorId: safePrestadorId,
-          subscriptionJson: JSON.stringify(subscription),
+      // ✅ Busca por ENDPOINT (único por dispositivo)
+      const existing = await this.prisma.userSubscription.findFirst({
+        where: {
+          subscriptionJson: {
+            contains: endpoint, // Procura pelo endpoint no JSON
+          },
         },
       });
-    }
-    // Sempre cria uma nova subscription para um novo dispositivo
-    return this.prisma.userSubscription.create({
-      data: {
-        clienteId: safeClienteId,
-        prestadorId: safePrestadorId,
-        subscriptionJson: JSON.stringify(subscription),
-      },
-    });
-  }
 
+      let result;
+      let action = 'created';
+
+      if (existing) {
+        // ✅ SE JÁ EXISTE: ATUALIZA
+        console.log(`🔄 Atualizando subscription existente: ${existing.id}`);
+        result = await this.prisma.userSubscription.update({
+          where: { id: existing.id },
+          data: {
+            clienteId: safeClienteId,
+            prestadorId: safePrestadorId,
+            subscriptionJson: JSON.stringify(subscription),
+          },
+        });
+        action = 'updated';
+      } else {
+        // ✅ SE NÃO EXISTE: CRIA NOVA
+        console.log(
+          `🆕 Criando nova subscription para endpoint: ${endpoint.substring(0, 50)}...`,
+        );
+        result = await this.prisma.userSubscription.create({
+          data: {
+            clienteId: safeClienteId,
+            prestadorId: safePrestadorId,
+            subscriptionJson: JSON.stringify(subscription),
+          },
+        });
+      }
+
+      return {
+        success: true,
+        subscriptionId: result.id,
+        action: action,
+        updated: action === 'updated',
+        endpoint: endpoint,
+      };
+    } catch (err) {
+      console.error('Erro no sendSubscriptionToServer:', err);
+      throw err;
+    }
+  }
   private safeParseId(id: any): number | null {
     if (
       id === null ||
