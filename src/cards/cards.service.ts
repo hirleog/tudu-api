@@ -526,7 +526,11 @@ export class CardsService {
       updateCardDto.status_pedido &&
       updateCardDto.status_pedido === 'finalizado'
     ) {
-      await this.notificationsService.notificarServicoFinalizado(
+      await this.notificationsService.notificarClienteServicoFinalizado(
+        id_pedido,
+        updatedCard,
+      );
+      await this.notificationsService.notificarPrestadorServicoFinalizado(
         id_pedido,
         updatedCard,
       );
