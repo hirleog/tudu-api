@@ -876,152 +876,6 @@ export class NotificationsService {
   }
 
   /** ------------------------------------------------------------------
-   *  🔔 NOTIFICA CLIENTE E PRESTADOR SOBRE SERVIÇO FINALIZADO
-   *  ------------------------------------------------------------------ */
-  async notificarServicoFinalizado(id_pedido: string, card: any) {
-    try {
-      // Busca dados do card com relacionamentos
-      const cardCompleto = await this.prisma.card.findUnique({
-        where: { id_pedido },
-        include: {
-          Cliente: true,
-          Prestador: true,
-        },
-      });
-
-      if (!cardCompleto) {
-        console.error(`❌ Card ${id_pedido} não encontrado`);
-        return;
-      }
-
-      // ✅ BUSCA IMAGENS DO CARD
-      let imagens: string[] = [];
-      const cardWithImages = await this.prisma.card.findUnique({
-        where: { id_pedido },
-        include: {
-          imagens: {
-            select: { url: true },
-            orderBy: { createdAt: 'asc' },
-          },
-        },
-      });
-
-      if (cardWithImages && cardWithImages.imagens.length > 0) {
-        imagens = cardWithImages.imagens.map((img) => img.url);
-      }
-
-      // 🔔 NOTIFICA O CLIENTE
-      if (cardCompleto.id_cliente) {
-        const subsCliente = await this.prisma.userSubscription.findMany({
-          where: { clienteId: cardCompleto.id_cliente },
-        });
-
-        // ✅ SEMPRE salva a notificação no banco para o cliente
-        await this.prisma.notification.create({
-          data: {
-            title: `✅ Serviço concluído!`,
-            body: `Seu serviço de ${card.categoria} foi finalizado com sucesso.`,
-            icon: '/assets/icons/icon-192x192.png',
-            id_pedido: id_pedido,
-            clienteId: cardCompleto.id_cliente,
-            status: 'SERVICE_COMPLETED',
-            metadata: JSON.stringify({
-              imagens,
-              categoria: card.categoria,
-            }),
-          },
-        });
-
-        // ✅ Se houver subscriptions, envia push
-        if (subsCliente.length > 0) {
-          const payloadCliente = JSON.stringify({
-            title: '✅ Serviço concluído!',
-            body: `Seu serviço de ${card.categoria} foi finalizado com sucesso.`,
-            icon: '/assets/icons/icon-192x192.png',
-            url: this.buildNotificationUrl(id_pedido),
-            data: {
-              id_pedido: id_pedido,
-              type: 'SERVICO_FINALIZADO',
-              imagens,
-              status: 'SERVICE_COMPLETED',
-            },
-          });
-
-          for (const s of subsCliente) {
-            const sub = JSON.parse(s.subscriptionJson);
-            try {
-              await webpush.sendNotification(sub, payloadCliente);
-              console.log('✅ Push de serviço finalizado enviado para cliente');
-            } catch (err) {
-              console.error('❌ Erro enviando notificação para cliente:', err);
-            }
-          }
-        }
-      }
-
-      // 🔔 NOTIFICA O PRESTADOR
-      if (cardCompleto.id_prestador) {
-        const subsPrestador = await this.prisma.userSubscription.findMany({
-          where: { prestadorId: cardCompleto.id_prestador },
-        });
-
-        // ✅ SEMPRE salva a notificação no banco para o prestador
-        await this.prisma.notification.create({
-          data: {
-            title: `🎊 Serviço finalizado!`,
-            body: `Parabéns! Você concluiu o serviço de ${card.categoria} com sucesso.`,
-            icon: '/assets/icons/icon-192x192.png',
-            id_pedido: id_pedido,
-            prestadorId: cardCompleto.id_prestador,
-            status: 'SERVICE_COMPLETED',
-            metadata: JSON.stringify({
-              imagens,
-              categoria: card.categoria,
-            }),
-          },
-        });
-
-        // ✅ Se houver subscriptions, envia push
-        if (subsPrestador.length > 0) {
-          const payloadPrestador = JSON.stringify({
-            title: '🎊 Serviço finalizado!',
-            body: `Parabéns! Você concluiu o serviço de ${card.categoria} com sucesso.`,
-            icon: '/assets/icons/icon-192x192.png',
-            url: '/tudu-professional/home',
-            data: {
-              id_pedido: id_pedido,
-              type: 'SERVICO_FINALIZADO',
-              imagens,
-              status: 'SERVICE_COMPLETED',
-            },
-          });
-
-          for (const s of subsPrestador) {
-            const sub = JSON.parse(s.subscriptionJson);
-            try {
-              await webpush.sendNotification(sub, payloadPrestador);
-              console.log(
-                '✅ Push de serviço finalizado enviado para prestador',
-              );
-            } catch (err) {
-              console.error(
-                '❌ Erro enviando notificação para prestador:',
-                err,
-              );
-            }
-          }
-        }
-      }
-
-      console.log(
-        `✅ Notificações de serviço finalizado processadas para card ${id_pedido}`,
-      );
-    } catch (err) {
-      console.error('❌ Erro notificarServicoFinalizado:', err);
-    }
-  }
-
-  /** ------------------------------------------------------------------
    *  🔔 NOTIFICA CANDIDATURA RECUSADA
    *  ------------------------------------------------------------------ */
   async notificarCandidaturaRecusada(
@@ -1299,6 +1153,190 @@ export class NotificationsService {
       }
     } catch (err) {
       console.error('❌ Erro notificarClienteCancelamentoCandidatura:', err);
+    }
+  }
+
+  async notificarClienteServicoFinalizado(id_pedido: string, card: any) {
+    try {
+      // Busca dados do card com relacionamentos
+      const cardCompleto = await this.buscarCardCompleto(id_pedido);
+      if (!cardCompleto) return;
+
+      // Busca imagens do card
+      const imagens = await this.buscarImagensCard(id_pedido);
+
+      // Notifica apenas o cliente
+      if (cardCompleto.id_cliente) {
+        await this.notificarUsuario(
+          cardCompleto.id_cliente,
+          id_pedido,
+          card.categoria,
+          imagens,
+          'cliente',
+        );
+      }
+
+      console.log(
+        `✅ Notificação de serviço finalizado enviada para cliente do card ${id_pedido}`,
+      );
+    } catch (err) {
+      console.error('❌ Erro notificarClienteServicoFinalizado:', err);
+    }
+  }
+
+  async notificarPrestadorServicoFinalizado(id_pedido: string, card: any) {
+    try {
+      // Busca dados do card com relacionamentos
+      const cardCompleto = await this.buscarCardCompleto(id_pedido);
+      if (!cardCompleto) return;
+
+      // Busca imagens do card
+      const imagens = await this.buscarImagensCard(id_pedido);
+
+      // Notifica apenas o prestador
+      if (cardCompleto.id_prestador) {
+        await this.notificarUsuario(
+          cardCompleto.id_prestador,
+          id_pedido,
+          card.categoria,
+          imagens,
+          'prestador',
+        );
+      }
+
+      console.log(
+        `✅ Notificação de serviço finalizado enviada para prestador do card ${id_pedido}`,
+      );
+    } catch (err) {
+      console.error('❌ Erro notificarPrestadorServicoFinalizado:', err);
+    }
+  }
+
+  // 🔧 MÉTODOS AUXILIARES (PRIVATE)
+
+  private async buscarCardCompleto(id_pedido: string) {
+    const cardCompleto = await this.prisma.card.findUnique({
+      where: { id_pedido },
+      include: {
+        Cliente: true,
+        Prestador: true,
+      },
+    });
+
+    if (!cardCompleto) {
+      console.error(`❌ Card ${id_pedido} não encontrado`);
+    }
+
+    return cardCompleto;
+  }
+
+  private async buscarImagensCard(id_pedido: string): Promise<string[]> {
+    const cardWithImages = await this.prisma.card.findUnique({
+      where: { id_pedido },
+      include: {
+        imagens: {
+          select: { url: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (cardWithImages && cardWithImages.imagens.length > 0) {
+      return cardWithImages.imagens.map((img) => img.url);
+    }
+
+    return [];
+  }
+
+  private async notificarUsuario(
+    usuarioId: number,
+    id_pedido: string,
+    categoria: string,
+    imagens: string[],
+    tipoUsuario: 'cliente' | 'prestador',
+  ) {
+    const isCliente = tipoUsuario === 'cliente';
+
+    // Configurações específicas por tipo de usuário
+    const configs = {
+      cliente: {
+        titleDb: `✅ Serviço concluído!`,
+        bodyDb: `Seu serviço de ${categoria} foi finalizado com sucesso.`,
+        titlePush: '✅ Serviço concluído!',
+        bodyPush: `Seu serviço de ${categoria} foi finalizado com sucesso.`,
+        url: this.buildNotificationUrl(id_pedido),
+        campoId: 'clienteId' as const,
+      },
+      prestador: {
+        titleDb: `🎊 Serviço finalizado!`,
+        bodyDb: `Parabéns! Você concluiu o serviço de ${categoria} com sucesso.`,
+        titlePush: '🎊 Serviço finalizado!',
+        bodyPush: `Parabéns! Você concluiu o serviço de ${categoria} com sucesso.`,
+        url: '/tudu-professional/home',
+        campoId: 'prestadorId' as const,
+      },
+    };
+
+    const config = configs[tipoUsuario];
+
+    // Busca subscriptions do usuário
+    const whereCondition = isCliente
+      ? { clienteId: usuarioId }
+      : { prestadorId: usuarioId };
+
+    const subsUsuario = await this.prisma.userSubscription.findMany({
+      where: whereCondition,
+    });
+
+    // Salva notificação no banco
+    const notificationData: any = {
+      title: config.titleDb,
+      body: config.bodyDb,
+      icon: '/assets/icons/icon-192x192.png',
+      id_pedido: id_pedido,
+      status: 'SERVICE_COMPLETED',
+      metadata: JSON.stringify({
+        imagens,
+        categoria: categoria,
+      }),
+    };
+
+    // Adiciona o ID correto baseado no tipo de usuário
+    notificationData[config.campoId] = usuarioId;
+
+    await this.prisma.notification.create({
+      data: notificationData,
+    });
+
+    // Envia push notification se houver subscriptions
+    if (subsUsuario.length > 0) {
+      const payload = JSON.stringify({
+        title: config.titlePush,
+        body: config.bodyPush,
+        icon: '/assets/icons/icon-192x192.png',
+        url: config.url,
+        data: {
+          id_pedido: id_pedido,
+          type: 'SERVICO_FINALIZADO',
+          imagens,
+          status: 'SERVICE_COMPLETED',
+        },
+      });
+
+      for (const s of subsUsuario) {
+        const sub = JSON.parse(s.subscriptionJson);
+        try {
+          await webpush.sendNotification(sub, payload);
+          console.log(
+            `✅ Push de serviço finalizado enviado para ${tipoUsuario}`,
+          );
+        } catch (err) {
+          console.error(
+            `❌ Erro enviando notificação para ${tipoUsuario}:`,
+            err,
+          );
+        }
+      }
     }
   }
 
