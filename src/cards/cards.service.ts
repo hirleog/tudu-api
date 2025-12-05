@@ -522,24 +522,21 @@ export class CardsService {
     await this.eventsGateway.notificarAtualizacao(updatedCard);
 
     // Notificação para mudança de status do pedido
-    if (
-      updateCardDto.status_pedido &&
-      updateCardDto.status_pedido === 'finalizado'
-    ) {
-      await this.notificationsService.notificarClienteServicoFinalizado(
-        id_pedido,
-        updatedCard,
-      );
-      await this.notificationsService.notificarPrestadorServicoFinalizado(
-        id_pedido,
-        updatedCard,
-      );
+ if (
+  updateCardDto.status_pedido &&
+  updateCardDto.status_pedido === 'finalizado'
+) {
+  // ✅ Usa apenas UM método que notifica ambos (cliente e prestador)
+  await this.notificationsService.notificarServicoFinalizado(
+    id_pedido,
+    updatedCard,
+  );
 
-      this.eventsGateway.notifyClientStatusChange(
-        updatedCard.id_pedido,
-        updatedCard.status_pedido,
-      );
-    }
+  this.eventsGateway.notifyClientStatusChange(
+    updatedCard.id_pedido,
+    updatedCard.status_pedido,
+  );
+}
 
     // Notificação quando pedido fica pendente (contratação feita)
     if (
