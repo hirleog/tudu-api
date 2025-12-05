@@ -478,7 +478,6 @@ export class CardsService {
       updatedAt: card.updatedAt,
     };
   }
-
   async update(id_pedido: string, updateCardDto: UpdateCardDto) {
     let prestador: any;
 
@@ -566,6 +565,16 @@ export class CardsService {
 
     // Controle de candidaturas
     let houveNovaCandidatura = false;
+    // ✅ Nova variável para controlar se deve enviar notificação de candidatura
+    let deveEnviarNotificacaoCandidatura = true;
+
+    // ✅ Se o status for 'pendente', NÃO envia notificação de candidatura
+    if (updateCardDto.status_pedido === 'pendente') {
+      deveEnviarNotificacaoCandidatura = false;
+      console.log(
+        '✅ Status pendente - notificações de candidatura suprimidas',
+      );
+    }
 
     if (updateCardDto.candidaturas) {
       const candidaturaDtos = updateCardDto.candidaturas;
@@ -611,41 +620,45 @@ export class CardsService {
             },
           });
 
-          // Se a candidatura estava recusada e houve mudanças, trata como nova candidatura
-          if (
-            existingCandidatura.status === 'recusado' &&
-            houveMudancasSignificativas
-          ) {
-            houveNovaCandidatura = true;
+          // ✅ Só envia notificação se deveEnviarNotificacaoCandidatura for true
+          if (deveEnviarNotificacaoCandidatura) {
+            // Se a candidatura estava recusada e houve mudanças, trata como nova candidatura
+            if (
+              existingCandidatura.status === 'recusado' &&
+              houveMudancasSignificativas
+            ) {
+              houveNovaCandidatura = true;
 
-            // 🔔 ENVIA NOTIFICAÇÃO PARA CANDIDATURA RECUSADA QUE FOI ATUALIZADA
-            await this.notificationsService.enviarPushNovaCandidatura(
-              existingCard.id_cliente,
-              id_pedido,
-              prestador,
-              candidaturaDto,
-              updatedCard,
-              true, // Indica que é uma candidatura atualizada
-            );
+              // 🔔 ENVIA NOTIFICAÇÃO PARA CANDIDATURA RECUSADA QUE FOI ATUALIZADA
+              await this.notificationsService.enviarPushNovaCandidatura(
+                existingCard.id_cliente,
+                id_pedido,
+                prestador,
+                candidaturaDto,
+                updatedCard,
+                true, // Indica que é uma candidatura atualizada
+              );
+            }
+            // Se houve mudanças significativas e não é recusada, também notifica
+            else if (
+              houveMudancasSignificativas &&
+              candidaturaDto.status !== 'recusado'
+            ) {
+              houveNovaCandidatura = true;
+
+              await this.notificationsService.enviarPushNovaCandidatura(
+                existingCard.id_cliente,
+                id_pedido,
+                prestador,
+                candidaturaDto,
+                updatedCard,
+                true, // Indica que é uma candidatura atualizada
+              );
+            }
           }
-          // Se houve mudanças significativas e não é recusada, também notifica
-          else if (
-            houveMudancasSignificativas &&
-            candidaturaDto.status !== 'recusado'
-          ) {
-            houveNovaCandidatura = true;
 
-            await this.notificationsService.enviarPushNovaCandidatura(
-              existingCard.id_cliente,
-              id_pedido,
-              prestador,
-              candidaturaDto,
-              updatedCard,
-              true, // Indica que é uma candidatura atualizada
-            );
-          }
-
-          // Notificação para candidatura recusada (apenas se o status mudou para recusado)
+          // ✅ Notificação para candidatura recusada (apenas se o status mudou para recusado)
+          // Esta notificação SEMPRE deve ser enviada, independente do status 'pendente'
           if (
             candidaturaDto.status === 'recusado' &&
             existingCandidatura.status !== 'recusado'
@@ -685,15 +698,22 @@ export class CardsService {
 
           houveNovaCandidatura = true;
 
-          // 🔔 ENVIA NOTIFICAÇÃO PARA CADA NOVA CANDIDATURA
-          await this.notificationsService.enviarPushNovaCandidatura(
-            existingCard.id_cliente,
-            id_pedido,
-            prestador,
-            candidaturaDto,
-            updatedCard,
-            false, // Indica que é uma candidatura nova
-          );
+          // ✅ Só envia notificação se deveEnviarNotificacaoCandidatura for true
+          if (deveEnviarNotificacaoCandidatura) {
+            // 🔔 ENVIA NOTIFICAÇÃO PARA CADA NOVA CANDIDATURA
+            await this.notificationsService.enviarPushNovaCandidatura(
+              existingCard.id_cliente,
+              id_pedido,
+              prestador,
+              candidaturaDto,
+              updatedCard,
+              false, // Indica que é uma candidatura nova
+            );
+          } else {
+            console.log(
+              `⏭️ Notificação de candidatura suprimida (status pendente)`,
+            );
+          }
         }
       }
 
