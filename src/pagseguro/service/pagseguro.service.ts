@@ -418,7 +418,7 @@ export class PagSeguroService {
       qr_codes: [
         {
           amount: {
-            value: Math.round(Number(card.valor) * 100),
+            value: createPixQrCodeDto.totalWithTax,
           },
         },
       ],
