@@ -13,7 +13,8 @@ export class PagSeguroService {
   private config: any;
   private accessToken: string | null = null;
   private tokenExpiry: Date | null = null;
-
+  private oauthToken: string | null = null;
+  private publicKey: string | null = null;
   constructor(
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
@@ -22,186 +23,33 @@ export class PagSeguroService {
     this.initializeConfig();
   }
 
-  private async initializeConfig() {
+  private initializeConfig() {
     this.config = {
       sandbox: this.configService.get<boolean>('PAGBANK_SANDBOX', true),
-      appId: this.configService.get<string>('PAGBANK_APP_ID'),
-      appKey: this.configService.get<string>('PAGBANK_API_KEY'),
+      // ✅ AGORA APENAS O TOKEN DIRETO
+      apiToken: this.configService.get<string>('PAGBANK_API_TOKEN'),
+      // Pode manter a chave pública se quiser (mas não é mais obrigatória)
       publicKey: this.configService.get<string>('PAGBANK_PUBLIC_KEY'),
-      sellerEmail: this.configService.get<string>('PAGBANK_SELLER_EMAIL'),
     };
 
-    console.log('🔐 CONFIGURAÇÕES PAGBANK:', {
+    console.log('🔐 CONFIGURAÇÕES NOVAS:', {
       sandbox: this.config.sandbox,
-      hasAppId: !!this.config.appId,
-      hasAppKey: !!this.config.appKey,
+      hasToken: !!this.config.apiToken,
+      tokenPrefix: this.config.apiToken?.substring(0, 15) + '...',
       hasPublicKey: !!this.config.publicKey,
     });
 
-    // Tentar autenticar
-    await this.authenticate();
-  }
-
-  /**
-   * CORREÇÃO: URLs atualizadas do PagBank/PagSeguro
-   */
-  private getBaseUrl(): string {
-    // PagBank/PagSeguro usa estes domínios:
-    // Sandbox: https://sandbox.api.pagseguro.com
-    // Produção: https://api.pagseguro.com
-
-    // Tente diferentes domínios possíveis
-    if (this.config.sandbox) {
-      // Tentativa 1: Domínio correto (sem .br)
-      return 'https://sandbox.api.pagseguro.com';
-      // Alternativa: 'https://sandbox.pagseguro.com'
-    } else {
-      return 'https://api.pagseguro.com';
-    }
-  }
-
-  /**
-   * CORREÇÃO: URL de autenticação OAuth
-   */
-  private getOAuthUrl(): string {
-    if (this.config.sandbox) {
-      return 'https://sandbox.api.pagseguro.com/oauth2/token';
-      // Alternativa: 'https://sandbox.pagseguro.com/oauth2/token'
-    } else {
-      return 'https://api.pagseguro.com/oauth2/token';
-    }
-  }
-
-  /**
-   * Testar diferentes URLs para encontrar a correta
-   */
-  private async testDomainConnectivity(): Promise<string> {
-    const testDomains = [
-      'https://sandbox.api.pagseguro.com',
-      'https://api.pagbank.com.br', // Domínio antigo
-      'https://sandbox.api.pagbank.com.br',
-      'https://pagseguro.uol.com.br',
-      'https://sandbox.pagseguro.uol.com.br',
-    ];
-
-    console.log('🌐 Testando conectividade com domínios...');
-
-    for (const domain of testDomains) {
-      try {
-        const testUrl = `${domain}/orders`;
-        console.log(`Testando: ${testUrl}`);
-
-        const response = await firstValueFrom(
-          this.httpService.get(testUrl, {
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            timeout: 5000,
-            httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-          }),
-        );
-
-        console.log(
-          `✅ Domínio acessível: ${domain} (Status: ${response.status})`,
-        );
-        return domain;
-      } catch (error: any) {
-        console.log(`❌ ${domain}: ${error.code || error.message}`);
-      }
-    }
-
-    throw new Error('Nenhum domínio do PagBank/PagSeguro está acessível');
-  }
-
-  /**
-   * Autenticação OAuth 2.0 com URL corrigida
-   */
-  private async authenticate(): Promise<void> {
-    try {
-      const authUrl = this.getOAuthUrl();
-
-      console.log('🔐 Tentando autenticar em:', authUrl);
-
-      const authResponse = await firstValueFrom(
-        this.httpService.post(
-          authUrl,
-          new URLSearchParams({
-            grant_type: 'client_credentials',
-            scope: 'payments.read payments.write',
-          }),
-          {
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              Authorization: `Basic ${Buffer.from(`${this.config.appId}:${this.config.appKey}`).toString('base64')}`,
-            },
-            httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-            timeout: 10000,
-          },
-        ),
-      );
-
-      this.accessToken = authResponse.data.access_token;
-      this.tokenExpiry = new Date(
-        Date.now() + authResponse.data.expires_in * 1000,
-      );
-
-      console.log('✅ AUTENTICAÇÃO OAuth BEM-SUCEDIDA:', {
-        tokenLength: this.accessToken?.length,
-        expiresIn: authResponse.data.expires_in,
-        tokenType: authResponse.data.token_type,
-        scope: authResponse.data.scope,
-      });
-    } catch (error: any) {
-      console.error('❌ ERRO NA AUTENTICAÇÃO OAuth:', {
-        url: this.getOAuthUrl(),
-        status: error.response?.status,
-        data: error.response?.data,
-        message: error.message,
-        code: error.code,
-      });
-
-      // Fallback: usar AppKey como Bearer Token direto
-      console.log('🔄 Usando AppKey como Bearer Token direto...');
-      this.accessToken = this.config.appKey;
-
-      // Testar conectividade com domínios
-      try {
-        const workingDomain = await this.testDomainConnectivity();
-        console.log(`✅ Domínio funcionando: ${workingDomain}`);
-      } catch (domainError) {
-        console.error('❌ Nenhum domínio funcionando');
-      }
-    }
-  }
-
-  /**
-   * Obter headers com autenticação
-   */
-  private async getHeaders(): Promise<any> {
-    // Verificar se token expirou (para OAuth)
-    if (this.tokenExpiry && new Date() >= this.tokenExpiry) {
-      console.log('🔄 Token expirado, renovando...');
-      await this.authenticate();
-    }
-
-    const headers: any = {
-      'Content-Type': 'application/json',
-      'x-api-version': '4.0',
-      // Algumas APIs exigem este header
-      'x-app-id': this.config.appId,
-    };
-
-    // Adicionar autorização
-    if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
-    }
-
-    // Para APIs específicas do PagBank
+    // Se tiver chave pública, usar
     if (this.config.publicKey) {
-      headers['x-public-key'] = this.config.publicKey;
+      this.publicKey = this.config.publicKey;
     }
+  }
 
-    return headers;
+  private getBaseUrl(): string {
+    // ✅ URLs CORRETAS confirmadas
+    return this.config.sandbox
+      ? 'https://sandbox.api.pagseguro.com'
+      : 'https://api.pagseguro.com';
   }
 
   private getHttpConfig(): AxiosRequestConfig {
@@ -214,166 +62,36 @@ export class PagSeguroService {
   }
 
   /**
-   * Testar autenticação com diferentes métodos e URLs
+   * ✅ Headers SIMPLIFICADOS - Token direto
    */
-  async testAuthentication(): Promise<any> {
-    const tests = [];
-
-    // Primeiro testar conectividade básica
-    try {
-      const workingDomain = await this.testDomainConnectivity();
-      tests.push({
-        method: 'Conectividade',
-        success: true,
-        domain: workingDomain,
-      });
-    } catch (error: any) {
-      tests.push({
-        method: 'Conectividade',
-        success: false,
-        error: error.message,
-      });
-      return {
-        success: false,
-        tests,
-        message: 'Não foi possível conectar a nenhum domínio do PagBank',
-      };
-    }
-
-    const baseUrl = this.getBaseUrl();
-
-    // Teste 1: Com token atual (OAuth ou Bearer direto)
-    try {
-      const headers = await this.getHeaders();
-      console.log('📤 Testando com headers:', {
-        hasAuth: !!headers.Authorization,
-        authPrefix: headers.Authorization?.substring(0, 20) + '...',
-        xApiVersion: headers['x-api-version'],
-        xAppId: headers['x-app-id'],
-      });
-
-      const response = await firstValueFrom(
-        this.httpService.get(`${baseUrl}/orders`, {
-          headers: headers,
-          params: { limit: 1 },
-          timeout: 10000,
-          httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-        }),
-      );
-      tests.push({
-        method: 'Token Atual',
-        success: true,
-        status: response.status,
-        usedOAuth: this.tokenExpiry !== null,
-        url: `${baseUrl}/orders`,
-      });
-    } catch (error: any) {
-      tests.push({
-        method: 'Token Atual',
-        success: false,
-        error: error.message,
-        status: error.response?.status,
-        responseData: error.response?.data,
-        url: `${baseUrl}/orders`,
-      });
-    }
-
-    // Teste 2: Bearer Token direto com AppKey
-    try {
-      const response = await firstValueFrom(
-        this.httpService.get(`${baseUrl}/orders`, {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.config.appKey}`,
-            'x-api-version': '4.0',
-            'x-app-id': this.config.appId,
-          },
-          params: { limit: 1 },
-          timeout: 10000,
-          httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-        }),
-      );
-      tests.push({
-        method: 'Bearer Direto (AppKey)',
-        success: true,
-        status: response.status,
-        url: `${baseUrl}/orders`,
-      });
-    } catch (error: any) {
-      tests.push({
-        method: 'Bearer Direto (AppKey)',
-        success: false,
-        error: error.message,
-        status: error.response?.status,
-        responseData: error.response?.data,
-        url: `${baseUrl}/orders`,
-      });
-    }
-
-    // Teste 3: Com public key
-    if (this.config.publicKey) {
-      try {
-        const response = await firstValueFrom(
-          this.httpService.get(`${baseUrl}/orders`, {
-            headers: {
-              'Content-Type': 'application/json',
-              'x-public-key': this.config.publicKey,
-              'x-api-version': '4.0',
-              'x-app-id': this.config.appId,
-            },
-            params: { limit: 1 },
-            timeout: 10000,
-            httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-          }),
-        );
-        tests.push({
-          method: 'Public Key',
-          success: true,
-          status: response.status,
-          url: `${baseUrl}/orders`,
-        });
-      } catch (error: any) {
-        tests.push({
-          method: 'Public Key',
-          success: false,
-          error: error.message,
-          status: error.response?.status,
-          url: `${baseUrl}/orders`,
-        });
-      }
-    }
-
-    const hasSuccess = tests.some((test) => test.success);
-
-    return {
-      success: hasSuccess,
-      tests,
-      config: {
-        sandbox: this.config.sandbox,
-        baseUrl,
-        appId: this.config.appId,
-        appKeyPrefix: this.config.appKey?.substring(0, 10) + '...',
-        publicKeyPrefix: this.config.publicKey?.substring(0, 10) + '...',
-        hasAccessToken: !!this.accessToken,
-        workingDomain: tests.find((t) => t.method === 'Conectividade')?.domain,
-      },
-      recommendations: hasSuccess
-        ? []
-        : [
-            'Verifique se as credenciais estão corretas',
-            'Teste manualmente a URL no navegador ou Postman',
-            'Verifique firewall/proxy da rede',
-            'O domínio pode ter mudado - consulte a documentação mais recente',
-          ],
+  private getHeaders(): any {
+    const headers: any = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${this.config.apiToken}`, // ✅ Token direto!
+      'x-api-version': '4.0',
+      accept: 'application/json',
     };
+
+    // Chave pública é opcional agora, mas pode ajudar
+    if (this.publicKey) {
+      headers['x-public-key'] = this.publicKey;
+    }
+
+    console.log('📨 Headers sendo enviados:', {
+      auth: headers.Authorization?.substring(0, 20) + '...',
+      hasPublicKey: !!headers['x-public-key'],
+      apiVersion: headers['x-api-version'],
+    });
+
+    return headers;
   }
 
   /**
-   * Criar pedido PIX com QR Code
+   * ✅ Criar pedido PIX - VERSÃO SIMPLIFICADA
    */
   async createPixOrder(createPixQrCodeDto: CreatePixQrCodeDto): Promise<any> {
     const baseUrl = this.getBaseUrl();
-    const headers = await this.getHeaders();
+    const headers = this.getHeaders();
     const httpConfig = this.getHttpConfig();
 
     // Buscar dados do banco
@@ -386,7 +104,7 @@ export class PagSeguroService {
       throw new Error('Pedido não encontrado');
     }
 
-    // Preparar payload
+    // ✅ PAYLOAD CORRETO para PagBank
     const payload = {
       reference_id: createPixQrCodeDto.reference_id,
       customer: {
@@ -394,8 +112,12 @@ export class PagSeguroService {
           0,
           100,
         ),
-        email: card.Cliente.email,
-        tax_id: card.Cliente.cpf || '12345678909',
+        email: this.config.sandbox
+          ? `c${createPixQrCodeDto.reference_id.replace(/\D/g, '').padEnd(9, '0').substring(0, 9)}@sandbox.pagseguro.com.br`
+          : card.Cliente.email,
+        tax_id: this.config.sandbox
+          ? '12345678909'
+          : card.Cliente.cpf || '12345678909',
         phones: [
           {
             country: '55',
@@ -412,13 +134,13 @@ export class PagSeguroService {
             100,
           ),
           quantity: 1,
-          unit_amount: Math.round(Number(card.valor) * 100),
+          unit_amount: card.valor, // Centavos
         },
       ],
       qr_codes: [
         {
           amount: {
-            value: createPixQrCodeDto.totalWithTax,
+            value: createPixQrCodeDto.totalWithTax, // Centavos
           },
         },
       ],
@@ -427,8 +149,12 @@ export class PagSeguroService {
         : [],
     };
 
-    console.log('📤 Enviando para:', `${baseUrl}/orders`);
-    console.log('📦 Payload:', JSON.stringify(payload, null, 2));
+    console.log('📤 Criando pedido PIX:', {
+      reference: payload.reference_id,
+      amount: `R$ ${(payload.qr_codes[0].amount.value / 100).toFixed(2)}`,
+      customer: payload.customer.email,
+      url: `${baseUrl}/orders`,
+    });
 
     try {
       const response = await firstValueFrom(
@@ -438,120 +164,83 @@ export class PagSeguroService {
         }),
       );
 
-      console.log('✅ RESPOSTA:', {
-        status: response.status,
-        order_id: response.data.id,
-        has_qr_code: !!response.data.qr_codes,
-      });
-
       const orderData = response.data;
       const qrCodeData = orderData.qr_codes?.[0];
-      const qrCodeText =
-        qrCodeData?.text ||
-        qrCodeData?.links?.find((link: any) => link.media === 'text/plain')
-          ?.href;
-      const qrCodeImage = qrCodeData?.links?.find(
-        (link: any) => link.media === 'image/png',
-      )?.href;
 
       // Salvar no banco
       const pagamento = await this.prisma.pagamento.create({
         data: {
+          id_pagamento: orderData.id,
           id_pedido: createPixQrCodeDto.reference_id,
           charge_id: orderData.id,
           reference_id: orderData.reference_id,
-          total_amount:
-            qrCodeData?.amount?.value || Math.round(Number(card.valor) * 100),
+          total_amount: qrCodeData?.amount?.value,
           origin_amount: Math.round(Number(card.valor) * 100),
           status: 'pending',
           type: 'pix',
           host: 'pagbank',
-          qr_code: qrCodeText,
-          qr_code_image: qrCodeImage,
-          expiration_date: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          qr_code_image: qrCodeData?.links?.[0]?.href || '', // URL como string
+          expiration_date: new Date(
+            qrCodeData?.expiration_date || Date.now() + 24 * 60 * 60 * 1000,
+          ),
         },
       });
 
       return {
         success: true,
+        message: 'Pedido PIX criado com sucesso',
         data: {
-          order: orderData,
-          local_payment_id: pagamento.id,
-          qr_code: qrCodeText,
-          qr_code_image: qrCodeImage,
-          expiration_date: qrCodeData?.expiration_date,
+          // Resposta completa do PagBank
+          pagbank_response: orderData,
+
+          // Dados formatados para fácil acesso
+          order: {
+            id: orderData.id,
+            reference_id: orderData.reference_id,
+            status: orderData.status,
+            created_at: orderData.created_at,
+          },
+
+          qr_code: {
+            id: qrCodeData?.id,
+            amount: qrCodeData?.amount,
+            expiration_date: qrCodeData?.expiration_date,
+            text: qrCodeData?.text,
+            image_url: qrCodeData?.links?.[0]?.href,
+            links: qrCodeData?.links || [],
+          },
+
+          // Seus dados locais
+          local_data: {
+            payment_id: pagamento.id,
+            database_id: pagamento.id,
+            saved_at: pagamento.created_at,
+          },
         },
       };
     } catch (error: any) {
-      console.error('❌ ERRO:', {
+      console.error('❌ ERRO detalhado:', {
         status: error.response?.status,
         data: error.response?.data,
-        message: error.message,
         url: `${baseUrl}/orders`,
       });
 
+      // Mensagens de erro específicas
+      let userMessage = 'Erro ao criar pedido PIX';
+
       if (error.response?.status === 401) {
-        await this.authenticate();
-        throw new Error('Token expirado. Tente novamente.');
+        userMessage = 'Token de autenticação inválido ou expirado';
+      } else if (error.response?.status === 403) {
+        userMessage = 'Acesso negado. Verifique permissões do token';
+      } else if (error.response?.status === 400) {
+        userMessage = `Dados inválidos: ${JSON.stringify(error.response.data)}`;
+      } else if (error.response?.data?.message) {
+        userMessage = error.response.data.message;
       }
 
-      throw new Error(
-        error.response?.data?.message || error.message || 'Erro ao criar PIX',
-      );
+      throw new Error(userMessage);
     }
   }
-
-  /**
-   * Criar cobrança PIX simplificada
-   */
-  async createSimplePixCharge(createPixChargeDto: {
-    reference_id: string;
-    description: string;
-    value: number;
-    customer_name: string;
-    customer_email?: string;
-    customer_tax_id?: string;
-    expires_in_minutes?: number;
-  }): Promise<any> {
-    try {
-      const pixQrCodeDto: CreatePixQrCodeDto = {
-        reference_id: createPixChargeDto.reference_id,
-      };
-
-      const result = await this.createPixOrder(pixQrCodeDto);
-      const orderData = result.data.order;
-      const qrCodeData = orderData.qr_codes?.[0];
-      const qrCodeText =
-        qrCodeData?.text ||
-        qrCodeData?.links?.find((link: any) => link.media === 'text/plain')
-          ?.href;
-      const qrCodeImage = qrCodeData?.links?.find(
-        (link: any) => link.media === 'image/png',
-      )?.href;
-
-      return {
-        success: true,
-        data: {
-          id: orderData.id,
-          reference_id: orderData.reference_id,
-          local_payment_id: result.data.local_payment_id,
-          status: orderData.status || 'CREATED',
-          qr_code: qrCodeText,
-          qr_code_image: qrCodeImage,
-          amount: {
-            value: qrCodeData?.amount?.value || createPixChargeDto.value * 100,
-            currency: 'BRL',
-          },
-          created_at: orderData.created_at,
-          expiration_date: qrCodeData?.expiration_date,
-        },
-        message: 'Cobrança PIX criada com sucesso',
-      };
-    } catch (error: any) {
-      throw new Error(error.message || 'Erro ao processar cobrança PIX');
-    }
-  }
-
   /**
    * Consultar pedido por ID
    */
