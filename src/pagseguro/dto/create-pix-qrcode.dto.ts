@@ -1,13 +1,13 @@
-import {
-  IsString,
-  IsOptional,
-  IsArray,
-  IsObject,
-  ValidateNested,
-  IsNumber,
-  Min,
-} from 'class-validator';
 import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested
+} from 'class-validator';
 
 class CustomerDto {
   @IsString()
@@ -55,6 +55,10 @@ class QrCodeDto {
 export class CreatePixQrCodeDto {
   @IsString()
   reference_id: string;
+
+  // @IsNumber()
+  @IsOptional()
+  totalWithTax?: number;
 
   @IsOptional()
   @IsObject()
