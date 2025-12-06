@@ -194,19 +194,6 @@ export class PagSeguroController {
   //   }
   // }
 
-  @Get('test-auth-detailed')
-  async testAuthDetailed() {
-    try {
-      const result = await this.pagSeguroService.testAuthentication();
-      return result;
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-  }
-
   /**
    * Verificar configurações de ambiente
    * Endpoint: GET /pagseguro/check-env
