@@ -25,7 +25,7 @@ export class PagSeguroService {
 
   private initializeConfig() {
     this.config = {
-      sandbox: this.configService.get<boolean>('PAGBANK_SANDBOX', true),
+      sandbox: this.configService.get<boolean>('PAGBANK_SANDBOX'),
       // ✅ AGORA APENAS O TOKEN DIRETO
       apiToken: this.configService.get<string>('PAGBANK_API_TOKEN'),
       // Pode manter a chave pública se quiser (mas não é mais obrigatória)
@@ -115,9 +115,7 @@ export class PagSeguroService {
         email: this.config.sandbox
           ? `c${createPixQrCodeDto.reference_id.replace(/\D/g, '').padEnd(9, '0').substring(0, 9)}@sandbox.pagseguro.com.br`
           : card.Cliente.email,
-        tax_id: this.config.sandbox
-          ? '12345678909'
-          : card.Cliente.cpf || '12345678909',
+        tax_id: card.Cliente.cpf,
         phones: [
           {
             country: '55',
@@ -149,13 +147,7 @@ export class PagSeguroService {
         : [],
     };
 
-    console.log('📤 Criando pedido PIX:', {
-      reference: payload.reference_id,
-      amount: `R$ ${(payload.qr_codes[0].amount.value / 100).toFixed(2)}`,
-      customer: payload.customer.email,
-      url: `${baseUrl}/orders`,
-    });
-
+    console.log('Payload completo:', JSON.stringify(payload, null, 2));
     try {
       const response = await firstValueFrom(
         this.httpService.post(`${baseUrl}/orders`, payload, {
