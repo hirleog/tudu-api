@@ -222,7 +222,7 @@ export class PagSeguroService {
         data: error.response?.data,
         url: `${baseUrl}/orders`,
       });
-      console.log('payload: ', payload);
+      console.log('payload: ', JSON.stringify(payload, null, 2));
 
       // Mensagens de erro específicas
       let userMessage = 'Erro ao criar pedido PIX';
