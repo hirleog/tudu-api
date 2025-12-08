@@ -144,7 +144,7 @@ export class PagSeguroService {
       qr_codes: [
         {
           amount: {
-            value: Number(createPixQrCodeDto.totalWithTax), // Centavos
+            value: createPixQrCodeDto.totalWithTax, // Centavos
           },
         },
       ],
@@ -222,6 +222,7 @@ export class PagSeguroService {
         data: error.response?.data,
         url: `${baseUrl}/orders`,
       });
+      console.log('payload: ', payload);
 
       // Mensagens de erro específicas
       let userMessage = 'Erro ao criar pedido PIX';
