@@ -138,7 +138,7 @@ export class PagSeguroService {
             100,
           ),
           quantity: 1,
-          unit_amount: card.valor, // Centavos
+          unit_amount: createPixQrCodeDto.totalWithTax, // Centavos
         },
       ],
       qr_codes: [
