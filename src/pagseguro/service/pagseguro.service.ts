@@ -24,9 +24,14 @@ export class PagSeguroService {
   }
 
   private initializeConfig() {
+    const sandboxEnvValue = this.configService.get<string>(
+      'PAGBANK_SANDBOX',
+      'true',
+    );
+    const isSandbox = sandboxEnvValue.toLowerCase() === 'true';
+
     this.config = {
-      sandbox: this.configService.get<boolean>('PAGBANK_SANDBOX'),
-      // ✅ AGORA APENAS O TOKEN DIRETO
+      sandbox: isSandbox, // ✅ AGORA APENAS O TOKEN DIRETO
       apiToken: this.configService.get<string>('PAGBANK_API_TOKEN'),
       // Pode manter a chave pública se quiser (mas não é mais obrigatória)
       publicKey: this.configService.get<string>('PAGBANK_PUBLIC_KEY'),
