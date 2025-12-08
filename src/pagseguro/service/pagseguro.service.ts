@@ -109,6 +109,7 @@ export class PagSeguroService {
       throw new Error('Pedido não encontrado');
     }
 
+    const cleanTaxId = card.Cliente.cpf.replace(/\D/g, '');
     // ✅ PAYLOAD CORRETO para PagBank
     const payload = {
       reference_id: createPixQrCodeDto.reference_id,
@@ -120,7 +121,7 @@ export class PagSeguroService {
         email: this.config.sandbox
           ? `c${createPixQrCodeDto.reference_id.replace(/\D/g, '').padEnd(9, '0').substring(0, 9)}@sandbox.pagseguro.com.br`
           : card.Cliente.email,
-        tax_id: card.Cliente.cpf,
+        tax_id: cleanTaxId,
         phones: [
           {
             country: '55',
@@ -143,7 +144,7 @@ export class PagSeguroService {
       qr_codes: [
         {
           amount: {
-            value: createPixQrCodeDto.totalWithTax, // Centavos
+            value: Number(createPixQrCodeDto.totalWithTax), // Centavos
           },
         },
       ],
