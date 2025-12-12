@@ -87,4 +87,5 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     this.server.to(roomName).emit('paymentStatus', payload);
   }
+  
 }

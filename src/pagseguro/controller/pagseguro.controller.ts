@@ -10,9 +10,8 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
-import { CreatePixOrderDto } from '../dto/create-pix-order.dto';
-import { PagSeguroService } from '../service/pagseguro.service';
 import { CreatePixQrCodeDto } from '../dto/create-pix-qrcode.dto';
+import { PagSeguroService } from '../service/pagseguro.service';
 
 @Controller('pagseguro')
 @UsePipes(new ValidationPipe({ transform: true }))
