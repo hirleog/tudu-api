@@ -6,6 +6,7 @@ import { CreatePixQrCodeDto } from '../dto/create-pix-qrcode.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { AxiosRequestConfig } from 'axios';
 import * as https from 'https';
+import { EventsGateway } from 'src/events/events.gateway';
 
 @Injectable()
 export class PagSeguroService {
@@ -19,6 +20,7 @@ export class PagSeguroService {
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
     private readonly prisma: PrismaService,
+    private readonly eventsGateway: EventsGateway,
   ) {
     this.initializeConfig();
   }
@@ -314,38 +316,60 @@ export class PagSeguroService {
     }
   }
 
-  /**
-   * Verificar configurações de ambiente
-   */
-  async checkEnvironment(): Promise<any> {
-    const envVars = {
-      PAGBANK_API_KEY: {
-        exists: !!this.configService.get<string>('PAGBANK_API_KEY'),
-        length: this.configService.get<string>('PAGBANK_API_KEY')?.length || 0,
-      },
-      PAGBANK_APP_ID: {
-        exists: !!this.configService.get<string>('PAGBANK_APP_ID'),
-        value: this.configService.get<string>('PAGBANK_APP_ID'),
-      },
-      PAGBANK_PUBLIC_KEY: {
-        exists: !!this.configService.get<string>('PAGBANK_PUBLIC_KEY'),
-        length:
-          this.configService.get<string>('PAGBANK_PUBLIC_KEY')?.length || 0,
-      },
-      PAGBANK_SANDBOX: this.configService.get<boolean>('PAGBANK_SANDBOX', true),
-      PAGBANK_WEBHOOK_URL: this.configService.get<string>(
-        'PAGBANK_WEBHOOK_URL',
-      ),
-    };
+  async handlePagBankWebhook(
+    webhookData: any,
+    signature: string,
+    notificationId: string,
+  ): Promise<void> {
+    // ... (Passos 1 e 2 de autenticação e obtenção de status)
 
-    return {
-      success: true,
-      environment: envVars,
-      currentConfig: {
-        sandbox: this.config.sandbox,
-        hasAppKey: !!this.config.appKey,
-        hasAccessToken: !!this.accessToken,
-      },
-    };
+    const orderId = webhookData.id;
+    const referenceId = webhookData.reference_id;
+    const status = webhookData.status;
+    const charge = webhookData.charges?.[0];
+    const chargeStatus = charge?.status;
+
+    // 🚨 PASSO 3: LÓGICA DE SUCESSO (PAID)
+    if (status === 'PAID' || chargeStatus === 'PAID') {
+      const finalStatus = 'paid';
+      const paidAt = new Date(charge?.paid_at || Date.now());
+
+      // 1. Atualizar DB
+      await this.prisma.pagamento.updateMany({
+        where: { reference_id: referenceId, status: { not: finalStatus } },
+        data: {
+          status: finalStatus,
+          paid_at: paidAt,
+          // ...
+          updated_at: new Date(),
+        },
+      });
+
+      this.logger.log(
+        `✅ Pagamento ${referenceId} (${orderId}) marcado como pago via webhook.`,
+      );
+
+      // 🚀 PASSO DE OURO: NOTIFICAR O FRONT VIA WEBSOCKET
+      this.eventsGateway.notifyPaymentSuccess(
+        referenceId, // O ID que o Front está esperando (referência do pedido)
+        {
+          message: 'Pagamento PIX confirmado!',
+          status: finalStatus,
+          pagbank_id: orderId,
+          amount: charge?.amount?.value || webhookData.amount?.value, // Use o valor, se disponível no payload
+        },
+      );
+      // Fim da Notificação WebSocket
+    } else if (
+      status === 'DECLINED' ||
+      status === 'CANCELLED' ||
+      status === 'EXPIRED'
+    ) {
+      // ... (Lógica para outros status)
+      // Você também pode enviar um evento WebSocket de falha aqui, se desejar.
+      // this.notificationService.notifyPaymentFailure(referenceId, { status: status.toLowerCase() });
+    }
+
+    return;
   }
 }
