@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -195,23 +196,6 @@ export class PagSeguroController {
   // }
 
   /**
-   * Verificar configurações de ambiente
-   * Endpoint: GET /pagseguro/check-env
-   */
-  @Get('check-env')
-  async checkEnvironment() {
-    try {
-      const result = await this.pagSeguroService.checkEnvironment();
-      return result;
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-  }
-
-  /**
    * Verificar API Key (debug)
    * Endpoint: GET /pagseguro/check-api-key
    */
@@ -334,41 +318,38 @@ export class PagSeguroController {
    * Webhook do PagBank (descomentar quando configurar)
    * Endpoint: POST /pagseguro/webhook
    */
-  // @Post('webhook')
-  // @HttpCode(HttpStatus.OK)
-  // async handleWebhook(@Body() webhookData: any, @Headers() headers: any) {
-  //   try {
-  //     console.log('📩 Webhook recebido:', {
-  //       headers,
-  //       data: webhookData,
-  //     });
+  /**
+   * Webhook do PagBank
+   * Endpoint: POST /pagseguro/webhook
+   * Configurado no notification_urls: 'https://seusite.com/pagseguro/webhook'
+   */
+  @Post('webhook')
+  @HttpCode(HttpStatus.OK) // Sempre retorne 200 OK para o PagBank
+  async handleWebhook(
+    @Body() webhookData: any,
+    @Headers('x-pagbank-signature') signature: string, // Pega o Header específico
+    @Headers('x-pagbank-notification-id') notificationId: string, // Pega o ID da notificação
+  ) {
+    // Logs de entrada para debug
+    console.log('📩 Webhook recebido:', { notificationId, signature });
+    console.log('Dados do Webhook:', JSON.stringify(webhookData, null, 2));
 
-  //     // Verificar assinatura do webhook se necessário
-  //     const signature = headers['x-pagbank-signature'];
+    try {
+      // Delega a lógica de processamento e segurança ao Service
+      await this.pagSeguroService.handlePagBankWebhook(
+        webhookData,
+        signature,
+        notificationId,
+      );
 
-  //     if (webhookData.event === 'ORDER_PAID') {
-  //       const orderId = webhookData.order.id;
-  //       const charge = webhookData.order.charges[0];
-
-  //       // Atualizar pagamento no banco
-  //       await this.pagSeguroService['prisma'].pagamento.updateMany({
-  //         where: { charge_id: orderId },
-  //         data: {
-  //           status: 'paid',
-  //           paid_at: new Date(charge.paid_at),
-  //           auth_code: charge.payment_response?.code,
-  //           response_description: charge.payment_response?.message,
-  //           updated_at: new Date(),
-  //         },
-  //       });
-
-  //       console.log(`✅ Pagamento ${orderId} marcado como pago via webhook`);
-  //     }
-
-  //     return { success: true, message: 'Webhook processado' };
-  //   } catch (error) {
-  //     console.error('❌ Erro no webhook:', error);
-  //     return { success: false, error: error.message };
-  //   }
-  // }
+      // Resposta de sucesso para o PagBank (código 200 OK é obrigatório)
+      return { success: true, message: 'Webhook processado' };
+    } catch (error) {
+      console.error('❌ Erro no processamento do webhook:', error.message);
+      // IMPORTANTE: Embora tenha ocorrido um erro interno,
+      // geralmente é melhor retornar 200 OK para evitar que o
+      // PagBank reenvie a notificação em loop.
+      return { success: false, error: error.message };
+    }
+  }
 }

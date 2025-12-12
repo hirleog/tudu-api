@@ -5,6 +5,7 @@ import { ConfigModule } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as https from 'https';
+import { EventsGateway } from 'src/events/events.gateway';
 
 @Module({
   imports: [
@@ -21,7 +22,7 @@ import * as https from 'https';
     ConfigModule,
   ],
   controllers: [PagSeguroController],
-  providers: [PagSeguroService, PrismaService],
-  exports: [PagSeguroService],
+  providers: [PagSeguroService, PrismaService, EventsGateway],
+  exports: [PagSeguroService, EventsGateway],
 })
 export class PagSeguroModule {}
