@@ -1444,4 +1444,104 @@ export class NotificationsService {
   private buildNotificationUrl(id_pedido: string): string {
     return `/home/budgets?id=${id_pedido}&flow=publicado`;
   }
+
+  // PAGBANK
+
+  /**
+   * ✅ NOVO MÉTODO: Cria e envia notificação de sucesso no pagamento PIX.
+   * @param clienteId ID do cliente que realizou o pagamento.
+   * @param id_pedido ID de referência do pedido.
+   * @param amount Valor pago (em centavos).
+   */
+  async notificarSucessoPagamento(
+    clienteId: number,
+    id_pedido: string,
+    amount: number,
+  ) {
+    try {
+      // Busca dados do cliente para a notificação
+      const cliente = await this.prisma.cliente.findUnique({
+        // CORREÇÃO: Usar id_cliente
+        where: { id_cliente: clienteId },
+        // CORREÇÃO: Remover 'user' (não existe na model Cliente)
+        select: { nome: true },
+      });
+
+      if (!cliente) {
+        this.logger.error(
+          `Cliente ID ${clienteId} não encontrado para notificação de pagamento.`,
+        );
+        return;
+      }
+
+      // Formatação do valor para a mensagem
+      const valorEmReais = (amount / 100).toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+      });
+
+      const notificationTitle = '💰 Pagamento Recebido!';
+      const notificationBody = `O seu pagamento de ${valorEmReais} foi confirmado para o pedido ${id_pedido}.`;
+      const finalStatus = 'PAYMENT_SUCCESS';
+
+      // 1. ✅ SEMPRE salva a notificação no banco (Central de Notificações)
+      await this.prisma.notification.create({
+        data: {
+          title: notificationTitle,
+          body: notificationBody,
+          icon: '/assets/icons/icon-192x192.png',
+          id_pedido: id_pedido,
+          clienteId, // Notificação destinada ao cliente que pagou
+          status: finalStatus,
+          metadata: JSON.stringify({
+            amount,
+            valorEmReais,
+            orderId: id_pedido,
+          }),
+        },
+      });
+
+      // 2. Busca subscriptions do cliente
+      const subs = await this.prisma.userSubscription.findMany({
+        where: { clienteId },
+      });
+
+      if (!subs.length) {
+        this.logger.log(
+          `ℹ Notificação de sucesso de pagamento salva no DB. Cliente ${clienteId} sem subscription para push.`,
+        );
+        return;
+      }
+
+      // 3. Prepara e envia push (Notificação Push nativa)
+      const payload = JSON.stringify({
+        title: notificationTitle,
+        body: notificationBody,
+        icon: '/assets/icons/icon-192x192.png',
+        url: this.buildNotificationUrl(id_pedido), // Presumindo que você tem este método
+        data: {
+          id_pedido: id_pedido,
+          type: finalStatus,
+          status: finalStatus,
+        },
+      });
+
+      for (const s of subs) {
+        const sub = JSON.parse(s.subscriptionJson);
+        try {
+          await webpush.sendNotification(sub, payload);
+          this.logger.log(
+            `✅ Push de sucesso de pagamento enviado para o cliente ${clienteId}.`,
+          );
+        } catch (err) {
+          this.logger.error(
+            `❌ Erro enviando notificação push de pagamento:`,
+            err,
+          );
+        }
+      }
+    } catch (err) {
+      this.logger.error('❌ Erro notificarSucessoPagamento:', err);
+    }
+  }
 }
