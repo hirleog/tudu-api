@@ -164,7 +164,7 @@ export class PagSeguroController {
 
     return {
       message: 'Estorno solicitado com sucesso.',
-      data: { id: paymentId, amount: payload.amount },
+      data: result.data,
     };
   }
 
