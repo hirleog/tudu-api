@@ -68,18 +68,21 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * O nome do evento ('joinOrderRoom') deve ser o mesmo usado no Front.
    */
   @SubscribeMessage('joinOrderRoom')
-  handleJoinOrderRoom(client: Socket, referenceId: string): void {
+  handleJoinOrderRoom(
+    client: Socket,
+    referenceId: string,
+    callback: (roomName: string) => void,
+  ): void {
     const roomName = `order:${referenceId}`;
 
-    // Adiciona o socket atual à "sala" (room) com o nome do pedido
     client.join(roomName);
     console.log(`[WS] Cliente ${client.id} entrou na sala: ${roomName}`);
 
-    // Opcional: Notificar o cliente que ele entrou na sala (ACK)
-    // client.emit('joinedRoom', roomName);
-  } // Exemplo: chamada feita quando prestador atualiza status
-  // ... (outros métodos)
-  // PAGBANK (Manter como está)
+    // ✅ NOVO: Chamar o callback para notificar o cliente
+    if (callback) {
+      callback(roomName);
+    }
+  }
 
   notifyPaymentSuccess(referenceId: string, payload: any) {
     // Usa o mesmo nome de sala definido acima
@@ -87,5 +90,4 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     this.server.to(roomName).emit('paymentStatus', payload);
   }
-  
 }
