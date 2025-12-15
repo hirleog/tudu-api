@@ -280,7 +280,7 @@ export class PagSeguroService {
    * Cancelar pedido (Estorno total ou parcial)
    */
   async cancelOrder(
-    paymentId: string,
+    chargeId: string,
     payload: { amount?: number },
   ): Promise<any> {
     const baseUrl = this.getBaseUrl();
@@ -290,22 +290,18 @@ export class PagSeguroService {
     let pagamentoOriginal: any | null = null;
     let amountInCents: number;
 
-    const prefix = 'ORDE_';
-    // CORREÇÃO: Usar o ID limpo (sem prefixo) para a URL da API
-    const paymentIdFormat = paymentId.replace(prefix, '');
-
     try {
       // AQUI: Usar o ID que veio no parâmetro (com o prefixo) para buscar no DB,
       // se for o que está armazenado no seu campo `id_pagamento`.
-      // NOTE: Se o DB armazena o ID JÁ limpo, você deve buscar usando `paymentIdFormat`.
-      // Mantenho `paymentId` conforme o original.
+      // NOTE: Se o DB armazena o ID JÁ limpo, você deve buscar usando `chargeIdFormat`.
+      // Mantenho `chargeId` conforme o original.
       pagamentoOriginal = await this.prisma.pagamento.findFirst({
-        where: { id_pagamento: paymentId },
+        where: { charge_id: chargeId },
       });
 
       if (!pagamentoOriginal) {
         throw new Error(
-          `Pagamento não encontrado no banco de dados para o ID: ${paymentId}`,
+          `Pagamento não encontrado no banco de dados para o ID: ${chargeId}`,
         );
       }
 
@@ -346,7 +342,7 @@ export class PagSeguroService {
     console.log('Payload estorno:', JSON.stringify(pagbankPayload, null, 2));
 
     try {
-      const url = `${baseUrl}/charges/${paymentIdFormat}/cancel`;
+      const url = `${baseUrl}/charges/${chargeId}/cancel`;
       const response = await firstValueFrom(
         this.httpService.post(url, pagbankPayload, { headers, ...httpConfig }),
       );
@@ -377,7 +373,7 @@ export class PagSeguroService {
       this.logger.error('❌ ERRO detalhado no estorno:', {
         status: error.response?.status,
         data: error.response?.data,
-        url: `${baseUrl}/payments/${paymentIdFormat}/refunds`,
+        url: `${baseUrl}/charges/${chargeId}/cancel`,
       });
       console.log('payload: ', JSON.stringify(pagbankPayload, null, 2));
 
