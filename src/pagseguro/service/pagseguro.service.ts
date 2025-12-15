@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -278,32 +278,86 @@ export class PagSeguroService {
   }
 
   /**
-   * Cancelar pedido
+   * Cancelar pedido (Estorno total ou parcial)
    */
-  async cancelOrder(orderId: string): Promise<any> {
+  async cancelOrder(
+    paymentId: string,
+    payload: { amount?: number },
+  ): Promise<any> {
     const baseUrl = this.getBaseUrl();
     const headers = await this.getHeaders();
+    const url = `${baseUrl}/payments/${paymentId}/refunds`;
+
+    let pagamentoOriginal: any | null = null;
+    let amountInCents: number;
+
+    try {
+      pagamentoOriginal = await this.prisma.pagamento.findFirst({
+        where: { id_pagamento: paymentId },
+      });
+
+      if (!pagamentoOriginal) {
+        throw new Error(
+          `Pagamento não encontrado no banco de dados para o ID: ${paymentId}`,
+        );
+      }
+
+      // Lógica para determinar o valor do estorno:
+      // Se 'payload.amount' for fornecido (valor em BRL), usamos ele (para estorno parcial).
+      // Se não for fornecido, usamos o 'total_amount' do BD (para estorno total).
+      if (payload.amount) {
+        // Converte o valor em BRL (vindo do front) para centavos
+        amountInCents = Math.round(payload.amount * 100);
+
+        // Verificação opcional: não permitir estorno de valor maior que o original
+        if (amountInCents > pagamentoOriginal.total_amount) {
+          throw new Error(
+            'O valor do estorno não pode exceder o valor original do pagamento.',
+          );
+        }
+      } else {
+        // Estorno total: usa o valor armazenado em centavos no DB
+        amountInCents = pagamentoOriginal.total_amount;
+      }
+    } catch (dbError) {
+      this.logger.error(
+        'Erro ao buscar pagamento no banco de dados antes do estorno:',
+        dbError,
+      );
+      throw new HttpException(
+        'Erro interno: Não foi possível obter os dados do pagamento original.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    const pagbankPayload = {
+      amount: {
+        value: amountInCents,
+        currency: 'BRL',
+      },
+    };
 
     try {
       const response = await firstValueFrom(
-        this.httpService.post(
-          `${baseUrl}/orders/${orderId}/cancel`,
-          {},
-          {
-            headers,
-            timeout: 10000,
-          },
-        ),
+        this.httpService.post(url, pagbankPayload, { headers, timeout: 30000 }),
       );
 
-      // Atualiza status no banco
-      await this.prisma.pagamento.updateMany({
-        where: { charge_id: orderId },
-        data: {
-          status: 'cancelled',
-          updated_at: new Date(),
-        },
-      });
+      // Atualiza o banco de dados após sucesso
+      try {
+        await this.prisma.pagamento.update({
+          where: { id: pagamentoOriginal.id },
+          data: {
+            status: 'voided', // Considera 'voided' mesmo para parcial, mas você pode querer 'partially_refunded'
+            reversed_amount: amountInCents,
+            updated_at: new Date(),
+          },
+        });
+      } catch (dbError) {
+        this.logger.error(
+          'Erro ao atualizar o banco de dados após estorno PagBank:',
+          dbError,
+        );
+      }
 
       return {
         success: true,
@@ -311,10 +365,15 @@ export class PagSeguroService {
       };
     } catch (error: any) {
       this.logger.error(
-        'Erro ao cancelar pedido:',
+        'Erro ao estornar pagamento PIX no PagBank:',
         error.response?.data || error.message,
       );
-      throw error;
+      throw new HttpException(
+        error.response?.data?.error_messages?.join(' | ') ||
+          error.response?.data?.message ||
+          'Erro ao estornar pagamento PIX',
+        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
