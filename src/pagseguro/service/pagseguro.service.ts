@@ -507,6 +507,18 @@ export class PagSeguroService {
             amountValue,
           );
         }
+
+        if (notifyFrontend) {
+          // 🚀 Notificar o Front via WebSocket
+          this.eventsGateway.notifyPaymentSuccess(referenceId, {
+            message: this.getFrontendMessage(finalStatus),
+            status: finalStatus,
+            pagbank_id: orderId,
+            amount: charge?.amount?.value || webhookData.amount?.value,
+          });
+        }
+
+        return;
       }
     } else {
       this.logger.debug(
@@ -519,18 +531,6 @@ export class PagSeguroService {
     }
 
     // --- Lógica de Notificação do Frontend (WebSocket) ---
-
-    if (notifyFrontend) {
-      // 🚀 Notificar o Front via WebSocket
-      this.eventsGateway.notifyPaymentSuccess(referenceId, {
-        message: this.getFrontendMessage(finalStatus),
-        status: finalStatus,
-        pagbank_id: orderId,
-        amount: charge?.amount?.value || webhookData.amount?.value,
-      });
-    }
-
-    return;
   }
   /**
    * Método auxiliar para gerar mensagens amigáveis para o Frontend
