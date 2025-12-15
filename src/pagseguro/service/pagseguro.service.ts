@@ -174,7 +174,6 @@ export class PagSeguroService {
         data: {
           id_pagamento: orderData.id,
           id_pedido: createPixQrCodeDto.reference_id,
-          charge_id: orderData.id,
           reference_id: orderData.reference_id,
           total_amount: qrCodeData?.amount?.value,
           origin_amount: Math.round(Number(card.valor) * 100),
@@ -285,34 +284,36 @@ export class PagSeguroService {
     payload: { amount?: number },
   ): Promise<any> {
     const baseUrl = this.getBaseUrl();
-    const headers = await this.getHeaders();
+    const headers = this.getHeaders(); // Não precisa de 'await' se for síncrona/retornar Promise resolvida
     const httpConfig = this.getHttpConfig();
 
     let pagamentoOriginal: any | null = null;
     let amountInCents: number;
 
     const prefix = 'ORDE_';
+    // CORREÇÃO: Usar o ID limpo (sem prefixo) para a URL da API
     const paymentIdFormat = paymentId.replace(prefix, '');
 
     try {
+      // AQUI: Usar o ID que veio no parâmetro (com o prefixo) para buscar no DB,
+      // se for o que está armazenado no seu campo `id_pagamento`.
+      // NOTE: Se o DB armazena o ID JÁ limpo, você deve buscar usando `paymentIdFormat`.
+      // Mantenho `paymentId` conforme o original.
       pagamentoOriginal = await this.prisma.pagamento.findFirst({
         where: { id_pagamento: paymentId },
       });
 
       if (!pagamentoOriginal) {
         throw new Error(
-          `Pagamento não encontrado no banco de dados para o ID: ${paymentIdFormat}`,
+          `Pagamento não encontrado no banco de dados para o ID: ${paymentId}`,
         );
       }
 
       // Lógica para determinar o valor do estorno:
-      // Se 'payload.amount' for fornecido (valor em BRL), usamos ele (para estorno parcial).
-      // Se não for fornecido, usamos o 'total_amount' do BD (para estorno total).
       if (payload.amount) {
-        // Converte o valor em BRL (vindo do front) para centavos
+        // ✅ CORREÇÃO: Conversão do valor (BRL) para centavos (o que a API PagBank espera)
         amountInCents = payload.amount;
 
-        // Verificação opcional: não permitir estorno de valor maior que o original
         if (amountInCents > pagamentoOriginal.total_amount) {
           throw new Error(
             'O valor do estorno não pode exceder o valor original do pagamento.',
@@ -323,6 +324,7 @@ export class PagSeguroService {
         amountInCents = pagamentoOriginal.total_amount;
       }
     } catch (dbError) {
+      // ✅ Log de erro mantido, mas sem o 'dbError' no throw
       this.logger.error(
         'Erro ao buscar pagamento no banco de dados antes do estorno:',
         dbError,
@@ -340,13 +342,13 @@ export class PagSeguroService {
       },
     };
 
+    // ✅ Log do Payload para debug, como no método de sucesso
+    console.log('Payload estorno:', JSON.stringify(pagbankPayload, null, 2));
+
     try {
+      const url = `${baseUrl}/charges/${paymentIdFormat}/cancel`;
       const response = await firstValueFrom(
-        this.httpService.post(
-          `${baseUrl}/payments/${paymentIdFormat}/refunds`,
-          pagbankPayload,
-          { headers, ...httpConfig },
-        ),
+        this.httpService.post(url, pagbankPayload, { headers, ...httpConfig }),
       );
 
       // Atualiza o banco de dados após sucesso
@@ -354,7 +356,7 @@ export class PagSeguroService {
         await this.prisma.pagamento.update({
           where: { id: pagamentoOriginal.id },
           data: {
-            status: 'voided', // Considera 'voided' mesmo para parcial, mas você pode querer 'partially_refunded'
+            status: 'voided',
             reversed_amount: amountInCents,
             updated_at: new Date(),
           },
@@ -371,16 +373,30 @@ export class PagSeguroService {
         data: response.data,
       };
     } catch (error: any) {
-      this.logger.error(
-        'Erro ao estornar pagamento PIX no PagBank:',
-        error.response?.data || error.message,
-      );
-      throw new HttpException(
-        error.response?.data?.error_messages?.join(' | ') ||
-          error.response?.data?.message ||
-          'Erro ao estornar pagamento PIX',
-        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      // ✅ Log de erro mais detalhado, como no método de sucesso
+      this.logger.error('❌ ERRO detalhado no estorno:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        url: `${baseUrl}/payments/${paymentIdFormat}/refunds`,
+      });
+      console.log('payload: ', JSON.stringify(pagbankPayload, null, 2));
+
+      // ✅ Tratamento de Erro alinhado com o método de sucesso
+      let userMessage = 'Erro ao estornar pagamento PIX';
+      let statusCode =
+        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+
+      if (error.response?.status === 401) {
+        userMessage = 'Token de autenticação inválido ou expirado';
+      } else if (error.response?.status === 403) {
+        userMessage = 'Acesso negado. Verifique permissões do token';
+      } else if (error.response?.status === 400) {
+        userMessage = `Dados inválidos: ${JSON.stringify(error.response.data)}`;
+      } else if (error.response?.data?.message) {
+        userMessage = error.response.data.message;
+      }
+
+      throw new HttpException(userMessage, statusCode);
     }
   }
 
@@ -469,6 +485,7 @@ export class PagSeguroService {
       where: { reference_id: referenceId, status: { not: finalStatus } },
       data: {
         status: finalStatus,
+        charge_id: charge?.id,
         // Apenas PAID tem o paid_at
         paid_at:
           finalStatus === 'paid'
