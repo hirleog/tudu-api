@@ -291,14 +291,17 @@ export class PagSeguroService {
     let pagamentoOriginal: any | null = null;
     let amountInCents: number;
 
+    const prefix = 'ORDER_';
+    const paymentIdFormat = paymentId.replace(prefix, '');
+
     try {
       pagamentoOriginal = await this.prisma.pagamento.findFirst({
-        where: { id_pagamento: paymentId },
+        where: { id_pagamento: paymentIdFormat },
       });
 
       if (!pagamentoOriginal) {
         throw new Error(
-          `Pagamento não encontrado no banco de dados para o ID: ${paymentId}`,
+          `Pagamento não encontrado no banco de dados para o ID: ${paymentIdFormat}`,
         );
       }
 
@@ -307,7 +310,7 @@ export class PagSeguroService {
       // Se não for fornecido, usamos o 'total_amount' do BD (para estorno total).
       if (payload.amount) {
         // Converte o valor em BRL (vindo do front) para centavos
-        amountInCents = Math.round(payload.amount * 100);
+        amountInCents = payload.amount;
 
         // Verificação opcional: não permitir estorno de valor maior que o original
         if (amountInCents > pagamentoOriginal.total_amount) {
