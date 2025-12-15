@@ -155,12 +155,12 @@ export class PagSeguroController {
     }
   }
 
-  @Post(':paymentId/refunds')
-  async refundPix(
-    @Param('paymentId') paymentId: string,
+  @Post(':chargeId/cancel')
+  async cancelPix(
+    @Param('chargeId') chargeId: string,
     @Body() payload: { amount?: number },
   ) {
-    const result = await this.pagSeguroService.cancelOrder(paymentId, payload);
+    const result = await this.pagSeguroService.cancelOrder(chargeId, payload);
 
     return {
       message: 'Estorno solicitado com sucesso.',
