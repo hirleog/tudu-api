@@ -475,7 +475,7 @@ export class CardsService {
       candidaturas: candidaturasFiltradas,
       chargeInfos: {
         charge_id: charge_id, // ← NOVO CAMPO ADICIONADO
-        total_amount: total_amount ? (total_amount / 100).toFixed(2) : null, // Convertendo para reais
+        total_amount: total_amount,
         paymentType: paymentType,
       },
       createdAt: card.createdAt,
