@@ -155,172 +155,21 @@ export class PagSeguroController {
     }
   }
 
-  /**
-   * Cancelar pedido
-   * Endpoint: POST /pagseguro/orders/:id/cancel
-   */
-  @Post('orders/:id/cancel')
-  async cancelOrder(@Param('id') orderId: string) {
-    try {
-      const result = await this.pagSeguroService.cancelOrder(orderId);
-      return {
-        success: true,
-        message: 'Pedido cancelado com sucesso',
-        data: result.data,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-        message: 'Erro ao cancelar pedido',
-      };
-    }
-  }
-
-  /**
-   * Testar autenticação com PagBank
-   * Endpoint: GET /pagseguro/test-auth
-   */
-  // @Get('test-auth')
-  // async testAuth() {
-  //   try {
-  //     const result = await this.pagSeguroService.testAuthentication();
-  //     return result;
-  //   } catch (error) {
-  //     return {
-  //       success: false,
-  //       error: error.message,
-  //     };
-  //   }
-  // }
-
-  /**
-   * Verificar API Key (debug)
-   * Endpoint: GET /pagseguro/check-api-key
-   */
-  @Get('check-api-key')
-  async checkApiKey() {
-    const apiKey = process.env.PAGBANK_API_KEY;
-
-    const analysis = {
-      exists: !!apiKey,
-      length: apiKey?.length,
-      startsWithPsk: apiKey?.startsWith('psk_'),
-      format: 'Deve ser: Bearer token (começa com psk_)',
-      yourKey: apiKey
-        ? `${apiKey.substring(0, 10)}...${apiKey.substring(apiKey.length - 5)}`
-        : 'Não encontrada',
-    };
-
-    console.log('🔐 ANÁLISE DA API KEY:', analysis);
+  @Post(':paymentId/refunds')
+  async refundPix(
+    @Param('paymentId') paymentId: string,
+    @Body() payload: { amount?: number },
+  ) {
+    const result = await this.pagSeguroService.cancelOrder(paymentId, payload);
 
     return {
-      success: true,
-      analysis,
+      message: 'Estorno solicitado com sucesso.',
+      data: result.data,
     };
   }
 
   /**
-   * Buscar pagamento por reference_id (ID do pedido no seu sistema)
-   * Endpoint: GET /pagseguro/payment/order/:id
-   */
-  @Get('payment/order/:id')
-  async getPaymentByOrderId(@Param('id') referenceId: string) {
-    try {
-      // Buscar no banco pelo reference_id
-      const pagamentos = await this.pagSeguroService[
-        'prisma'
-      ].pagamento.findMany({
-        where: { id_pedido: referenceId },
-        orderBy: { created_at: 'desc' },
-      });
-
-      if (!pagamentos || pagamentos.length === 0) {
-        return {
-          success: false,
-          message: 'Nenhum pagamento encontrado para este pedido',
-        };
-      }
-
-      return {
-        success: true,
-        data: pagamentos,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-        message: 'Erro ao buscar pagamentos',
-      };
-    }
-  }
-
-  /**
-   * Listar pagamentos por status
-   * Endpoint: GET /pagseguro/payments
-   */
-  @Get('payments')
-  async getPaymentsByStatus() {
-    try {
-      const statusCounts = await this.pagSeguroService[
-        'prisma'
-      ].pagamento.groupBy({
-        by: ['status'],
-        _count: {
-          status: true,
-        },
-        orderBy: {
-          _count: {
-            status: 'desc',
-          },
-        },
-      });
-
-      const recentPayments = await this.pagSeguroService[
-        'prisma'
-      ].pagamento.findMany({
-        take: 10,
-        orderBy: { created_at: 'desc' },
-        include: {
-          Card: {
-            select: {
-              categoria: true,
-              subcategoria: true,
-              Cliente: {
-                select: {
-                  nome: true,
-                  email: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
-      return {
-        success: true,
-        data: {
-          stats: statusCounts,
-          recent: recentPayments,
-        },
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-        message: 'Erro ao listar pagamentos',
-      };
-    }
-  }
-
-  /**
-   * Webhook do PagBank (descomentar quando configurar)
-   * Endpoint: POST /pagseguro/webhook
-   */
-  /**
-   * Webhook do PagBank
-   * Endpoint: POST /pagseguro/webhook
-   * Configurado no notification_urls: 'https://seusite.com/pagseguro/webhook'
+   * Webhook do PagBank para notificar status do pagamento pix
    */
   @Post('webhook')
   @HttpCode(HttpStatus.OK) // Sempre retorne 200 OK para o PagBank
