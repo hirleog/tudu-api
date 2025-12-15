@@ -103,7 +103,6 @@ export class PagSeguroService {
     const headers = this.getHeaders();
     const httpConfig = this.getHttpConfig();
 
-    
     // Buscar dados do banco
     const card = await this.prisma.card.findUnique({
       where: { id_pedido: createPixQrCodeDto.reference_id },
@@ -287,17 +286,17 @@ export class PagSeguroService {
   ): Promise<any> {
     const baseUrl = this.getBaseUrl();
     const headers = await this.getHeaders();
-    const url = `${baseUrl}/payments/${paymentId}/refunds`;
+    const httpConfig = this.getHttpConfig();
 
     let pagamentoOriginal: any | null = null;
     let amountInCents: number;
 
-    const prefix = 'ORDER_';
+    const prefix = 'ORDE_';
     const paymentIdFormat = paymentId.replace(prefix, '');
 
     try {
       pagamentoOriginal = await this.prisma.pagamento.findFirst({
-        where: { id_pagamento: paymentIdFormat },
+        where: { id_pagamento: paymentId },
       });
 
       if (!pagamentoOriginal) {
@@ -343,7 +342,11 @@ export class PagSeguroService {
 
     try {
       const response = await firstValueFrom(
-        this.httpService.post(url, pagbankPayload, { headers, timeout: 30000 }),
+        this.httpService.post(
+          `${baseUrl}/payments/${paymentIdFormat}/refunds`,
+          pagbankPayload,
+          { headers, ...httpConfig },
+        ),
       );
 
       // Atualiza o banco de dados após sucesso
@@ -376,7 +379,7 @@ export class PagSeguroService {
         error.response?.data?.error_messages?.join(' | ') ||
           error.response?.data?.message ||
           'Erro ao estornar pagamento PIX',
-        payload.amount,
+        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
