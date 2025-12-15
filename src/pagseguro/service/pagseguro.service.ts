@@ -103,6 +103,7 @@ export class PagSeguroService {
     const headers = this.getHeaders();
     const httpConfig = this.getHttpConfig();
 
+    
     // Buscar dados do banco
     const card = await this.prisma.card.findUnique({
       where: { id_pedido: createPixQrCodeDto.reference_id },
@@ -375,7 +376,7 @@ export class PagSeguroService {
         error.response?.data?.error_messages?.join(' | ') ||
           error.response?.data?.message ||
           'Erro ao estornar pagamento PIX',
-        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
+        payload.amount,
       );
     }
   }
