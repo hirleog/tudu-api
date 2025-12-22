@@ -9,14 +9,13 @@ import { CardsService } from './cards.service';
 import { EventsModule } from 'src/events/events.module';
 
 @Module({
-  imports: [PrismaModule, CloudinaryModule],
+  imports: [PrismaModule, CloudinaryModule, EventsModule],
   controllers: [CardsController],
   providers: [
     CardsService,
     PaymentsService,
     InstallmentsService,
     NotificationsService,
-    EventsModule,
   ],
   exports: [],
 })
