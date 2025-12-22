@@ -1034,18 +1034,13 @@ export class CardsService {
     id_candidatura: string,
     userInfo: { id_cliente?: number; role?: string },
   ) {
-    return await this.prisma.$transaction(async (prisma) => {
-      const { id_cliente, role } = userInfo;
-
+    // 1. Executamos apenas as operações de banco de dados dentro da transação
+    const result = await this.prisma.$transaction(async (prisma) => {
       // Buscar a candidatura e o card relacionado
       const candidatura = await prisma.candidatura.findUnique({
         where: { id_candidatura: Number(id_candidatura) },
         include: {
-          Card: {
-            include: {
-              Candidatura: true, // Incluir outras candidaturas para verificar se ainda há candidatos
-            },
-          },
+          Card: true,
           Prestador: true,
         },
       });
@@ -1056,19 +1051,17 @@ export class CardsService {
         );
       }
 
-      // Verificar se a candidatura pertence ao card especificado
       if (candidatura.id_pedido !== id_pedido) {
         throw new BadRequestException(
           'A candidatura não pertence a este pedido',
         );
       }
 
-      // Verificar se a candidatura já está cancelada
       if (candidatura.status === 'cancelado') {
         throw new ForbiddenException('Esta candidatura já está cancelada');
       }
 
-      // Atualizar o status da candidatura para cancelado
+      // Atualizar o status da candidatura para cancelado (ou deletar conforme seu código original)
       const candidaturaDeletada = await prisma.candidatura.delete({
         where: { id_candidatura: Number(id_candidatura) },
         include: {
@@ -1077,13 +1070,11 @@ export class CardsService {
         },
       });
 
-      // ✅ LÓGICA CORRIGIDA: Verificar se deve voltar para 'publicado' apenas se estava 'pendente'
-      // e esta era a única candidatura ativa
       let novoStatus = candidatura.Card.status_pedido;
 
       if (candidatura.Card.status_pedido === 'pendente') {
-        // Se o card estava pendente e cancelamos a candidatura, verificar se ainda há outras candidaturas ativas
-        const outrasCandidaturasAtivas = await prisma.candidatura.findMany({
+        // Otimização: Usar count() em vez de findMany() para poupar memória e tempo
+        const outrasCandidaturasAtivasCount = await prisma.candidatura.count({
           where: {
             id_pedido: id_pedido,
             id_candidatura: { not: Number(id_candidatura) },
@@ -1092,13 +1083,8 @@ export class CardsService {
         });
 
         // Se não há mais candidaturas ativas, voltar para 'publicado'
-        if (outrasCandidaturasAtivas.length === 0) {
-          novoStatus = 'publicado';
-        }
-        // Se ainda há outras candidaturas, manter como 'pendente'
-        else {
-          novoStatus = 'pendente';
-        }
+        novoStatus =
+          outrasCandidaturasAtivasCount === 0 ? 'publicado' : 'pendente';
       }
 
       // Atualizar o card com o status correto
@@ -1106,7 +1092,6 @@ export class CardsService {
         where: { id_pedido },
         data: {
           status_pedido: novoStatus,
-          // Se voltou para publicado, remover o prestador selecionado
           id_prestador:
             novoStatus === 'publicado' ? null : candidatura.Card.id_prestador,
           updatedAt: new Date(),
@@ -1120,44 +1105,40 @@ export class CardsService {
         },
       });
 
-      // 🔔 NOTIFICA O CLIENTE SOBRE O CANCELAMENTO DA CANDIDATURA
-      try {
-        await this.notificationsService.notificarClienteCancelamentoCandidatura(
-          candidatura.Card.id_cliente,
-          id_pedido,
-          candidatura.Prestador,
-          cardAtualizado,
-        );
-      } catch (notificationError) {
-        console.warn(
-          'Erro na notificação de cancelamento:',
-          notificationError.message,
-        );
-      }
-
-      // Notificar via WebSocket sobre a atualização
-      // try {
-      //   await this.eventsGateway.notificarAtualizacao(cardAtualizado);
-
-      //   // Notificar o prestador sobre o cancelamento da sua candidatura
-      //   this.eventsGateway.notifyPrestadorCandidaturaCancelada(
-      //     candidatura.prestador_id,
-      //     id_pedido,
-      //     id_candidatura,
-      //   );
-      // } catch (notificationError) {
-      //   console.warn(
-      //     'Erro na notificação WebSocket:',
-      //     notificationError.message,
-      //   );
-      // }
-
+      // Retornamos os dados necessários para a notificação e para o cliente
       return {
-        status: 'success',
-        message: 'Candidatura removida com sucesso',
-        candidatura: candidaturaDeletada,
-        card: cardAtualizado,
+        candidaturaDeletada,
+        cardAtualizado,
+        prestador: candidatura.Prestador,
+        idCliente: candidatura.Card.id_cliente,
       };
     });
+
+    // 2. Notificações e WebSockets ficam FORA da transação
+    // Se falharem, o banco já está garantido e não sofre rollback por timeout
+    try {
+      await this.notificationsService.notificarClienteCancelamentoCandidatura(
+        result.idCliente,
+        id_pedido,
+        result.prestador,
+        result.cardAtualizado,
+      );
+
+      // Se o seu gateway estiver ativo, chame-o aqui também:
+      // await this.eventsGateway.notificarAtualizacao(result.cardAtualizado);
+    } catch (notificationError) {
+      // Apenas logamos o erro, sem interromper a resposta de sucesso para o usuário
+      console.warn(
+        'Ação concluída, mas houve erro no envio da notificação:',
+        notificationError.message,
+      );
+    }
+
+    return {
+      status: 'success',
+      message: 'Candidatura removida com sucesso',
+      candidatura: result.candidaturaDeletada,
+      card: result.cardAtualizado,
+    };
   }
 }

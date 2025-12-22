@@ -155,7 +155,7 @@ export class PagSeguroController {
     }
   }
 
-  @Post(':chargeId/cancel')
+  @Post(':chargeId/pix-cancel')
   async cancelPix(
     @Param('chargeId') chargeId: string,
     @Body() payload: { amount?: number },
