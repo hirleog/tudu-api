@@ -75,12 +75,12 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    */
   @SubscribeMessage('joinOrderRoom')
   handleJoinOrderRoom(client: Socket, referenceId: any, callback: any) {
-    // Garante que o ID seja tratado como string, não importa o que venha
-    const id =
+    // Se vier um objeto {id: '73824485'}, extraímos apenas a string
+    const cleanId =
       typeof referenceId === 'object'
-        ? referenceId.id_pedido || referenceId.reference_id
+        ? referenceId.referenceId || referenceId.id
         : referenceId;
-    const roomName = `order:${id}`;
+    const roomName = `order:${cleanId}`;
 
     client.join(roomName);
     console.log(`[WS] Cliente ${client.id} entrou na sala: ${roomName}`);
