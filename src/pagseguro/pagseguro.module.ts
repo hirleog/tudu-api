@@ -7,6 +7,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import * as https from 'https';
 import { EventsGateway } from 'src/events/events.gateway';
 import { NotificationsService } from 'src/notifications/service/notifications.service';
+import { EventsModule } from 'src/events/events.module';
 
 @Module({
   imports: [
@@ -21,14 +22,10 @@ import { NotificationsService } from 'src/notifications/service/notifications.se
       }),
     }),
     ConfigModule,
+    EventsModule,
   ],
   controllers: [PagSeguroController],
-  providers: [
-    PagSeguroService,
-    PrismaService,
-    EventsGateway,
-    NotificationsService,
-  ],
-  exports: [PagSeguroService, EventsGateway],
+  providers: [PagSeguroService, PrismaService, NotificationsService],
+  exports: [PagSeguroService],
 })
 export class PagSeguroModule {}

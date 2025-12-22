@@ -413,6 +413,10 @@ export class PagSeguroService {
     // pois ele é mais granular para o evento transacional.
     const effectiveStatus = chargeStatus || status;
 
+    this.logger.log(
+      `Webhook recebido para Order ID: ${orderId}, Reference ID: ${referenceId}, Status efetivo: ${effectiveStatus}. STATUS: ${chargeStatus}, orderStatus=${status}`,
+    );
+
     // Mapeamento dos status do PagBank para os status do seu banco de dados (Prisma)
     let finalStatus:
       | 'paid'
@@ -508,8 +512,18 @@ export class PagSeguroService {
           );
         }
 
+        this.logger.log(
+          `notifyFrontend está ${notifyFrontend} para pagamento PAID.`,
+        );
+
         if (notifyFrontend) {
+          this.logger.log(
+            `entrou no fluxo de notificar o front end para pagamento PAID.`,
+          );
           // 🚀 Notificar o Front via WebSocket
+          this.logger.log(
+            `Tentando notificar socket para a sala: order:${referenceId}`,
+          );
           this.eventsGateway.notifyPaymentSuccess(referenceId, {
             message: this.getFrontendMessage(finalStatus),
             status: finalStatus,

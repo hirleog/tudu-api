@@ -15,7 +15,9 @@ const corsOrigins = isDev
 
 @WebSocketGateway({
   cors: {
-    origin: ['https://use-tudu.com.br', 'https://professional.use-tudu.com.br'],
+    origin: isDev
+      ? ['http://localhost:4200', 'http://localhost:3000']
+      : ['https://use-tudu.com.br', 'https://professional.use-tudu.com.br'],
     credentials: true,
   },
   transports: ['websocket'],
@@ -23,6 +25,10 @@ const corsOrigins = isDev
 export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
+
+  afterInit(server: Server) {
+    console.log('✅ WebSocket Gateway Inicializado e Servidor Ativo');
+  }
 
   handleConnection(client: Socket) {
     console.log(`Client connected: ${client.id}`);
@@ -68,25 +74,36 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * O nome do evento ('joinOrderRoom') deve ser o mesmo usado no Front.
    */
   @SubscribeMessage('joinOrderRoom')
-  handleJoinOrderRoom(
-    client: Socket,
-    referenceId: string,
-    callback: (roomName: string) => void,
-  ): void {
-    const roomName = `order:${referenceId}`;
+  handleJoinOrderRoom(client: Socket, referenceId: any, callback: any) {
+    // Garante que o ID seja tratado como string, não importa o que venha
+    const id =
+      typeof referenceId === 'object'
+        ? referenceId.id_pedido || referenceId.reference_id
+        : referenceId;
+    const roomName = `order:${id}`;
 
     client.join(roomName);
     console.log(`[WS] Cliente ${client.id} entrou na sala: ${roomName}`);
 
-    // ✅ NOVO: Chamar o callback para notificar o cliente
-    if (callback) {
-      callback(roomName);
-    }
+    if (callback) callback(roomName);
   }
 
   notifyPaymentSuccess(referenceId: string, payload: any) {
-    // Usa o mesmo nome de sala definido acima
-    const roomName = `order:${referenceId}`; // Emite o evento 'paymentStatus' para a sala
+    if (!this.server) {
+      console.error(
+        '❌ ERRO CRÍTICO: O servidor Socket.io não foi inicializado no Gateway!',
+      );
+      return;
+    }
+    const roomName = `order:${referenceId}`;
+
+    // Verificação crucial: Existe alguém nessa sala?
+    const connectedSockets = this.server.sockets.adapter.rooms.get(roomName);
+    const numClients = connectedSockets ? connectedSockets.size : 0;
+
+    console.log(
+      `[WS] Disparando para sala ${roomName}. Clientes conectados agora: ${numClients}`,
+    );
 
     this.server.to(roomName).emit('paymentStatus', payload);
   }

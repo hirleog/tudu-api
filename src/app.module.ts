@@ -1,4 +1,3 @@
-import { NotificationLockService } from './notifications/service/notification-lock.service';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -8,7 +7,7 @@ import { CardsModule } from './cards/cards.module';
 import { ClienteModule } from './cliente/cliente.module';
 import { EmailService } from './email/email.service';
 import { VerificationService } from './email/verification.service';
-import { EventsGateway } from './events/events.gateway';
+import { EventsModule } from './events/events.module';
 import { ExperienciaModule } from './experience/experience.module';
 import { GeolocationModule } from './geolocation/geolocation.module';
 import { InstallmentsController } from './getnet/installments/controller/installments.controller';
@@ -18,13 +17,15 @@ import { PaymentsModule } from './getnet/payments/payments.module';
 import { PaymentsService } from './getnet/payments/payments.service';
 import { ImagemModule } from './imagem/imagem.module';
 import { MalgaModule } from './malga/malga.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { NotificationLockService } from './notifications/service/notification-lock.service';
 import { PagSeguroModule } from './pagseguro/pagseguro.module';
 import { PrestadorModule } from './prestador/prestador.module';
 import { PrismaModule } from './prisma/prisma.module';
-import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
+    EventsModule,
     InstallmentsModule,
     CardsModule,
     ClienteModule,
@@ -47,11 +48,10 @@ import { NotificationsModule } from './notifications/notifications.module';
   ],
   controllers: [IpDeviceController, InstallmentsController, AppController],
   providers: [
-        NotificationLockService, 
+    NotificationLockService,
     EmailService,
     VerificationService,
     AppService,
-    EventsGateway,
     PaymentsService,
   ],
 })
