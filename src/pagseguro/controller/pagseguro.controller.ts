@@ -12,11 +12,15 @@ import {
 } from '@nestjs/common';
 import { CreatePixQrCodeDto } from '../dto/create-pix-qrcode.dto';
 import { PagSeguroService } from '../service/pagseguro.service';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @Controller('pagseguro')
 @UsePipes(new ValidationPipe({ transform: true }))
 export class PagSeguroController {
-  constructor(private readonly pagSeguroService: PagSeguroService) {}
+  constructor(
+    private readonly pagSeguroService: PagSeguroService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   /**
    * Criar pedido com QR Code PIX
@@ -199,5 +203,14 @@ export class PagSeguroController {
       // PagBank reenvie a notificação em loop.
       return { success: false, error: error.message };
     }
+  }
+  @Get('status/:referenceId')
+  async checkStatus(@Param('referenceId') referenceId: string) {
+    const pagamento = await this.prisma.pagamento.findFirst({
+      where: { reference_id: referenceId },
+      select: { status: true },
+    });
+
+    return { status: pagamento?.status || 'pending' };
   }
 }
