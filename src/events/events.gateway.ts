@@ -73,38 +73,38 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * Adiciona o cliente (socket) à sala específica do pedido (room).
    * O nome do evento ('joinOrderRoom') deve ser o mesmo usado no Front.
    */
-  @SubscribeMessage('joinOrderRoom')
-  handleJoinOrderRoom(client: Socket, referenceId: any, callback: any) {
-    // Se vier um objeto {id: '73824485'}, extraímos apenas a string
-    const cleanId =
-      typeof referenceId === 'object'
-        ? referenceId.referenceId || referenceId.id
-        : referenceId;
-    const roomName = `order:${cleanId}`;
+  // @SubscribeMessage('joinOrderRoom')
+  // handleJoinOrderRoom(client: Socket, referenceId: any, callback: any) {
+  //   // Se vier um objeto {id: '73824485'}, extraímos apenas a string
+  //   const cleanId =
+  //     typeof referenceId === 'object'
+  //       ? referenceId.referenceId || referenceId.id
+  //       : referenceId;
+  //   const roomName = `order:${cleanId}`;
 
-    client.join(roomName);
-    console.log(`[WS] Cliente ${client.id} entrou na sala: ${roomName}`);
+  //   client.join(roomName);
+  //   console.log(`[WS] Cliente ${client.id} entrou na sala: ${roomName}`);
 
-    if (callback) callback(roomName);
-  }
+  //   if (callback) callback(roomName);
+  // }
 
-  notifyPaymentSuccess(referenceId: string, payload: any) {
-    if (!this.server) {
-      console.error(
-        '❌ ERRO CRÍTICO: O servidor Socket.io não foi inicializado no Gateway!',
-      );
-      return;
-    }
-    const roomName = `order:${referenceId}`;
+  // notifyPaymentSuccess(referenceId: string, payload: any) {
+  //   if (!this.server) {
+  //     console.error(
+  //       '❌ ERRO CRÍTICO: O servidor Socket.io não foi inicializado no Gateway!',
+  //     );
+  //     return;
+  //   }
+  //   const roomName = `order:${referenceId}`;
 
-    // Verificação crucial: Existe alguém nessa sala?
-    const connectedSockets = this.server.sockets.adapter.rooms.get(roomName);
-    const numClients = connectedSockets ? connectedSockets.size : 0;
+  //   // Verificação crucial: Existe alguém nessa sala?
+  //   const connectedSockets = this.server.sockets.adapter.rooms.get(roomName);
+  //   const numClients = connectedSockets ? connectedSockets.size : 0;
 
-    console.log(
-      `[WS] Disparando para sala ${roomName}. Clientes conectados agora: ${numClients}`,
-    );
+  //   console.log(
+  //     `[WS] Disparando para sala ${roomName}. Clientes conectados agora: ${numClients}`,
+  //   );
 
-    this.server.to(roomName).emit('paymentStatus', payload);
-  }
+  //   this.server.to(roomName).emit('paymentStatus', payload);
+  // }
 }

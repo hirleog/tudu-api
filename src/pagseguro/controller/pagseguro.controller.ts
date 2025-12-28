@@ -5,6 +5,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   Post,
   UsePipes,
@@ -204,13 +205,17 @@ export class PagSeguroController {
       return { success: false, error: error.message };
     }
   }
-  @Get('status/:referenceId')
-  async checkStatus(@Param('referenceId') referenceId: string) {
+  @Get('pix/status/:idPagamento')
+  async checkStatus(@Param('idPagamento') idPagamento: string) {
     const pagamento = await this.prisma.pagamento.findFirst({
-      where: { reference_id: referenceId },
+      where: { id_pagamento: idPagamento },
       select: { status: true },
     });
 
-    return { status: pagamento?.status || 'pending' };
+    if (!pagamento) {
+      throw new NotFoundException('Pagamento não encontrado'); // Retorna 404 proposital para ID inexistente
+    }
+
+    return { status: pagamento.status };
   }
 }
