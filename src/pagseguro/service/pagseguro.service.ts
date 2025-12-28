@@ -103,6 +103,10 @@ export class PagSeguroService {
     const headers = this.getHeaders();
     const httpConfig = this.getHttpConfig();
 
+    const expirationMinutes = 30;
+    const expirationDate = new Date();
+    expirationDate.setMinutes(expirationDate.getMinutes() + expirationMinutes);
+
     // Buscar dados do banco
     const card = await this.prisma.card.findUnique({
       where: { id_pedido: createPixQrCodeDto.reference_id },
@@ -150,6 +154,7 @@ export class PagSeguroService {
           amount: {
             value: createPixQrCodeDto.totalWithTax, // Centavos
           },
+          expiration_date: expirationDate.toISOString(),
         },
       ],
       notification_urls: this.configService.get<string>('PAGBANK_WEBHOOK_URL')
@@ -524,12 +529,12 @@ export class PagSeguroService {
           this.logger.log(
             `Tentando notificar socket para a sala: order:${referenceId}`,
           );
-          this.eventsGateway.notifyPaymentSuccess(referenceId, {
-            message: this.getFrontendMessage(finalStatus),
-            status: finalStatus,
-            pagbank_id: orderId,
-            amount: charge?.amount?.value || webhookData.amount?.value,
-          });
+          // this.eventsGateway.notifyPaymentSuccess(referenceId, {
+          //   message: this.getFrontendMessage(finalStatus),
+          //   status: finalStatus,
+          //   pagbank_id: orderId,
+          //   amount: charge?.amount?.value || webhookData.amount?.value,
+          // });
         }
 
         return;
