@@ -8,6 +8,7 @@ import { AxiosRequestConfig } from 'axios';
 import * as https from 'https';
 import { EventsGateway } from 'src/events/events.gateway';
 import { NotificationsService } from 'src/notifications/service/notifications.service';
+import { PIX_CONFIG } from 'src/shared/constants';
 
 @Injectable()
 export class PagSeguroService {
@@ -103,9 +104,10 @@ export class PagSeguroService {
     const headers = this.getHeaders();
     const httpConfig = this.getHttpConfig();
 
-    const expirationMinutes = 1;
     const expirationDate = new Date();
-    expirationDate.setMinutes(expirationDate.getMinutes() + expirationMinutes);
+    expirationDate.setMinutes(
+      expirationDate.getMinutes() + PIX_CONFIG.EXPIRATION_MINUTES,
+    );
 
     // Buscar dados do banco
     const card = await this.prisma.card.findUnique({
