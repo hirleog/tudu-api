@@ -14,6 +14,7 @@ import {
 import { CreatePixQrCodeDto } from '../dto/create-pix-qrcode.dto';
 import { PagSeguroService } from '../service/pagseguro.service';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { PIX_CONFIG } from 'src/shared/constants';
 
 @Controller('pagseguro')
 @UsePipes(new ValidationPipe({ transform: true }))
@@ -211,12 +212,28 @@ export class PagSeguroController {
       where: { id_pagamento: idPagamento },
     });
 
-    if (!pagamento) throw new NotFoundException();
+    if (!pagamento) {
+      throw new NotFoundException('Pagamento não encontrado');
+    }
 
-    // Se no banco está PENDING, mas já passou do tempo de expiração real
-    // (ex: 10 minutos após o created_at), podemos assumir expirado
-    const limiteExpira = new Date(pagamento.created_at.getTime() + 60000); // 1 min
-    if (pagamento.status === 'pending' && new Date() > limiteExpira) {
+    // Se o pagamento já foi pago ou cancelado, retorna o status real do banco
+    if (pagamento.status !== 'pending') {
+      return { status: pagamento.status };
+    }
+
+    // CÁLCULO DE EXPIRAÇÃO NO BACKEND
+    // Somamos o tempo de expiração + o buffer de segurança
+    const minutosTotais =
+      PIX_CONFIG.EXPIRATION_MINUTES + PIX_CONFIG.DB_EXPIRATION_BUFFER_MINUTES;
+    const tempoLimiteMs = minutosTotais * 60 * 1000;
+
+    const dataLimite = new Date(pagamento.created_at.getTime() + tempoLimiteMs);
+
+    // Se ainda está pendente no DB, mas o tempo limite real já passou:
+    if (new Date() > dataLimite) {
+      // Opcional: Você pode atualizar o status no banco para 'expired' aqui mesmo
+      // await this.prisma.pagamento.update({ where: { id: pagamento.id }, data: { status: 'expired' } });
+
       return { status: 'expired' };
     }
 
