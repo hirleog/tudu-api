@@ -209,11 +209,15 @@ export class PagSeguroController {
   async checkStatus(@Param('idPagamento') idPagamento: string) {
     const pagamento = await this.prisma.pagamento.findFirst({
       where: { id_pagamento: idPagamento },
-      select: { status: true },
     });
 
-    if (!pagamento) {
-      throw new NotFoundException('Pagamento não encontrado'); // Retorna 404 proposital para ID inexistente
+    if (!pagamento) throw new NotFoundException();
+
+    // Se no banco está PENDING, mas já passou do tempo de expiração real
+    // (ex: 10 minutos após o created_at), podemos assumir expirado
+    const limiteExpira = new Date(pagamento.created_at.getTime() + 60000); // 1 min
+    if (pagamento.status === 'pending' && new Date() > limiteExpira) {
+      return { status: 'expired' };
     }
 
     return { status: pagamento.status };
