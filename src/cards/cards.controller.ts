@@ -169,7 +169,6 @@ export class CardsController {
       parsedDataInicial,
       parsedDataFinal,
       categoria,
-      filters,
     );
   }
 
@@ -234,7 +233,6 @@ export class CardsController {
       id_pedido,
       prestadorInfo,
       clienteInfo,
-      idPrestadorFromHeader, // Passa o id_prestador do header
     );
   }
 

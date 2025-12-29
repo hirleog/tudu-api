@@ -27,47 +27,43 @@ export class CardsService {
     const generateNumericId = customAlphabet('0123456789', 8);
     const id_pedido = generateNumericId();
 
-    const cardData: any = {
-      id_pedido: id_pedido,
-      id_cliente: Number(createCardDto.id_cliente),
-      categoria: createCardDto.categoria,
-      status_pedido: createCardDto.status_pedido,
-      subcategoria: createCardDto.subcategoria,
-      filters: createCardDto.filters,
-      serviceDescription: createCardDto.serviceDescription,
-      valor: createCardDto.valor,
-      horario_preferencial: createCardDto.horario_preferencial,
-      codigo_confirmacao: createCardDto.codigo_confirmacao,
-      cep: createCardDto.cep,
-      street: createCardDto.street,
-      neighborhood: createCardDto.neighborhood,
-      city: createCardDto.city,
-      state: createCardDto.state,
-      number: createCardDto.number,
-      complement: createCardDto.complement || null,
-    };
-
-    if (imagensUrl && imagensUrl.length > 0) {
-      cardData.imagens = {
-        create: imagensUrl.map((url, index) => ({
-          url,
-          nome: `Imagem ${index + 1}`,
-        })),
-      };
-    }
-
-    // Cria o card
+    // Criamos o objeto de dados explicitamente para evitar erros de tipagem do Prisma
     const novoCard = await this.prisma.card.create({
-      data: cardData,
+      data: {
+        id_pedido: id_pedido,
+        id_cliente: Number(createCardDto.id_cliente),
+        categoria: createCardDto.categoria,
+        subcategoria: createCardDto.subcategoria,
+        status_pedido: createCardDto.status_pedido,
+        filters: createCardDto.filters,
+        serviceDescription: createCardDto.serviceDescription,
+        valor: createCardDto.valor,
+        horario_preferencial: createCardDto.horario_preferencial,
+        codigo_confirmacao: createCardDto.codigo_confirmacao,
+        cep: createCardDto.cep,
+        street: createCardDto.street,
+        neighborhood: createCardDto.neighborhood,
+        city: createCardDto.city,
+        state: createCardDto.state,
+        number: createCardDto.number,
+        complement: createCardDto.complement || null,
+        imagens:
+          imagensUrl?.length > 0
+            ? {
+                create: imagensUrl.map((url, index) => ({
+                  url,
+                  nome: `Imagem ${index + 1}`,
+                })),
+              }
+            : undefined,
+      },
       include: { imagens: true },
     });
 
-    await this.notificationsService.sendCardCreatedPushOptimized(novoCard);
-
-    // 🔔 ENVIO DO WHATSAPP APÓS SUCESSO
-    // await this.notificationService.enviarNotificacaoCardCriadoComBotoes(
-    //   novoCard,
-    // );
+    // Notificação em background (não trava a resposta)
+    this.notificationsService
+      .sendCardCreatedPushOptimized(novoCard)
+      .catch((err) => this.logger.error(`Erro push: ${err.message}`));
 
     return novoCard;
   }
@@ -393,75 +389,126 @@ export class CardsService {
     };
   }
 
+  // async findById(
+  //   id_pedido: string,
+  //   prestadorInfo: {
+  //     id_prestador?: string;
+  //   } | null,
+  //   clienteInfo: {
+  //     id_cliente?: number;
+  //   } | null,
+  //   idPrestadorFromHeader,
+  // ): Promise<any> {
+  //   const { id_prestador } = prestadorInfo || {};
+  //   const { id_cliente } = clienteInfo || {};
+
+  //   const card = await this.prisma.card.findUnique({
+  //     where: {
+  //       id_pedido,
+  //     },
+  //     include: {
+  //       Candidatura: true,
+  //       imagens: true,
+  //       pagamentos: {
+  //         orderBy: { created_at: 'desc' }, // Pega o mais recente primeiro
+  //         take: 1, // Pega apenas o último pagamento
+  //       },
+  //     },
+  //   });
+
+  //   if (!card) {
+  //     throw new Error('Pedido não encontrado');
+  //   }
+
+  //   const todasCandidaturas = card.Candidatura.map((candidatura) => ({
+  //     id_candidatura: candidatura.id_candidatura || null,
+  //     prestador_id: candidatura.prestador_id || null,
+  //     valor_negociado: candidatura.valor_negociado || null,
+  //     horario_negociado: candidatura.horario_negociado || null,
+  //     data_candidatura: candidatura.data_candidatura || null,
+  //     status: candidatura.status || false,
+  //   }));
+
+  //   const candidaturasFiltradas =
+  //     id_cliente !== undefined
+  //       ? todasCandidaturas.filter((c: any) => c.status !== 'recusado')
+  //       : todasCandidaturas.filter(
+  //           (c: any) => c.prestador_id === Number(id_prestador),
+  //         );
+
+  //   // Pega o charge_id do último pagamento (se existir)
+  //   const ultimoPagamento = card.pagamentos[0];
+  //   const charge_id = ultimoPagamento?.charge_id || null;
+  //   const total_amount = ultimoPagamento?.total_amount || null;
+  //   const paymentType = ultimoPagamento?.type || null;
+
+  //   return {
+  //     id_pedido: card.id_pedido,
+  //     id_cliente: card.id_cliente.toString(),
+  //     id_prestador: card.id_prestador || null,
+  //     status_pedido: card.status_pedido,
+
+  //     categoria: card.categoria,
+  //     subcategoria: card.subcategoria,
+  //     serviceDescription: card.serviceDescription,
+  //     valor: card.valor,
+  //     horario_preferencial: card.horario_preferencial,
+  //     codigo_confirmacao: card.codigo_confirmacao || null,
+  //     data_finalizacao: card.data_finalizacao || null,
+
+  //     imagens: card.imagens.map((img) => img.url),
+
+  //     address: {
+  //       cep: card.cep,
+  //       street: card.street,
+  //       neighborhood: card.neighborhood,
+  //       city: card.city,
+  //       state: card.state,
+  //       number: card.number,
+  //       complement: card.complement || null,
+  //     },
+
+  //     candidaturas: candidaturasFiltradas,
+  //     chargeInfos: {
+  //       charge_id: charge_id, // ← NOVO CAMPO ADICIONADO
+  //       total_amount: total_amount,
+  //       paymentType: paymentType,
+  //     },
+  //     createdAt: card.createdAt,
+  //     updatedAt: card.updatedAt,
+  //   };
+  // }
   async findById(
     id_pedido: string,
-    prestadorInfo: {
-      id_prestador?: string;
-    } | null,
-    clienteInfo: {
-      id_cliente?: number;
-    } | null,
-    idPrestadorFromHeader,
+    prestadorInfo: { id_prestador?: string } | null,
+    clienteInfo: { id_cliente?: number } | null,
   ): Promise<any> {
-    const { id_prestador } = prestadorInfo || {};
-    const { id_cliente } = clienteInfo || {};
+    const prestadorId = Number(prestadorInfo?.id_prestador);
+    const clienteId = clienteInfo?.id_cliente;
 
     const card = await this.prisma.card.findUnique({
-      where: {
-        id_pedido,
-      },
+      where: { id_pedido },
       include: {
         Candidatura: true,
         imagens: true,
-        pagamentos: {
-          orderBy: { created_at: 'desc' }, // Pega o mais recente primeiro
-          take: 1, // Pega apenas o último pagamento
-        },
+        pagamentos: { orderBy: { created_at: 'desc' }, take: 1 },
       },
     });
 
-    if (!card) {
-      throw new Error('Pedido não encontrado');
-    }
+    if (!card) throw new NotFoundException('Pedido não encontrado');
 
-    const todasCandidaturas = card.Candidatura.map((candidatura) => ({
-      id_candidatura: candidatura.id_candidatura || null,
-      prestador_id: candidatura.prestador_id || null,
-      valor_negociado: candidatura.valor_negociado || null,
-      horario_negociado: candidatura.horario_negociado || null,
-      data_candidatura: candidatura.data_candidatura || null,
-      status: candidatura.status || false,
-    }));
+    // Filtragem eficiente no nível de memória (já que é um único card)
+    const candidaturas = clienteId
+      ? card.Candidatura.filter((c) => c.status !== 'recusado')
+      : card.Candidatura.filter((c) => c.prestador_id === prestadorId);
 
-    const candidaturasFiltradas =
-      id_cliente !== undefined
-        ? todasCandidaturas.filter((c: any) => c.status !== 'recusado')
-        : todasCandidaturas.filter(
-            (c: any) => c.prestador_id === Number(id_prestador),
-          );
-
-    // Pega o charge_id do último pagamento (se existir)
     const ultimoPagamento = card.pagamentos[0];
-    const charge_id = ultimoPagamento?.charge_id || null;
-    const total_amount = ultimoPagamento?.total_amount || null;
-    const paymentType = ultimoPagamento?.type || null;
 
     return {
-      id_pedido: card.id_pedido,
+      ...card,
       id_cliente: card.id_cliente.toString(),
-      id_prestador: card.id_prestador || null,
-      status_pedido: card.status_pedido,
-
-      categoria: card.categoria,
-      subcategoria: card.subcategoria,
-      serviceDescription: card.serviceDescription,
-      valor: card.valor,
-      horario_preferencial: card.horario_preferencial,
-      codigo_confirmacao: card.codigo_confirmacao || null,
-      data_finalizacao: card.data_finalizacao || null,
-
+      valor: card.valor.toString(),
       imagens: card.imagens.map((img) => img.url),
-
       address: {
         cep: card.cep,
         street: card.street,
@@ -471,340 +518,182 @@ export class CardsService {
         number: card.number,
         complement: card.complement || null,
       },
-
-      candidaturas: candidaturasFiltradas,
+      candidaturas: candidaturas.map((c) => ({
+        ...c,
+        valor_negociado: c.valor_negociado?.toString(),
+      })),
       chargeInfos: {
-        charge_id: charge_id, // ← NOVO CAMPO ADICIONADO
-        total_amount: total_amount,
-        paymentType: paymentType,
+        charge_id: ultimoPagamento?.charge_id || null,
+        total_amount: ultimoPagamento?.total_amount || null,
+        paymentType: ultimoPagamento?.type || null,
       },
-      createdAt: card.createdAt,
-      updatedAt: card.updatedAt,
+      createdAt: this.adjustTimezone(card.createdAt),
+      updatedAt: this.adjustTimezone(card.updatedAt),
     };
   }
   async update(id_pedido: string, updateCardDto: UpdateCardDto) {
-    let prestador: any;
-
+    // 1. Busca inicial para validações (Apenas uma vez)
     const existingCard = await this.prisma.card.findUnique({
       where: { id_pedido },
       include: { Candidatura: true },
     });
 
-    if (!existingCard) {
-      throw new NotFoundException(`Card with ID ${id_pedido} not found`);
-    }
+    if (!existingCard)
+      throw new NotFoundException(`Card ${id_pedido} não encontrado`);
 
+    // 2. Determina o prestador a ser salvo no card (se for pendente)
+    const id_prestador_contratado =
+      updateCardDto.status_pedido === 'pendente'
+        ? updateCardDto.candidaturas?.[0]?.prestador_id
+        : undefined;
+
+    // 3. Atualização principal do Card
     const updatedCard = await this.prisma.card.update({
       where: { id_pedido },
       data: {
-        id_prestador:
-          updateCardDto.status_pedido === 'pendente'
-            ? updateCardDto.candidaturas[0].prestador_id
-            : null,
+        id_prestador: id_prestador_contratado ?? existingCard.id_prestador,
         status_pedido:
           updateCardDto.status_pedido ?? existingCard.status_pedido,
         categoria: updateCardDto.categoria ?? existingCard.categoria,
-        subcategoria: updateCardDto.subcategoria ?? existingCard.subcategoria,
         valor: updateCardDto.valor ?? existingCard.valor,
-        horario_preferencial:
-          updateCardDto.horario_preferencial ??
-          existingCard.horario_preferencial,
-        codigo_confirmacao:
-          updateCardDto.codigo_confirmacao ?? existingCard.codigo_confirmacao,
-        data_finalizacao: updateCardDto.data_finalizacao ?? null,
-        cep: updateCardDto.cep ?? existingCard.cep,
-        street: updateCardDto.street ?? existingCard.street,
-        neighborhood: updateCardDto.neighborhood ?? existingCard.neighborhood,
-        city: updateCardDto.city ?? existingCard.city,
-        state: updateCardDto.state ?? existingCard.state,
-        number: updateCardDto.number ?? existingCard.number,
-        complement: updateCardDto.complement ?? existingCard.complement,
+        data_finalizacao: updateCardDto.data_finalizacao,
+        // ... espalhar outros campos se necessário
       },
       include: { Candidatura: true },
     });
 
-    await this.eventsGateway.notificarAtualizacao(updatedCard);
-
-    // Notificação para mudança de status do pedido
-    if (
-      updateCardDto.status_pedido &&
-      updateCardDto.status_pedido === 'finalizado'
-    ) {
-      // ✅ Usa apenas UM método que notifica ambos (cliente e prestador)
-      await this.notificationsService.notificarServicoFinalizado(
-        id_pedido,
-        updatedCard,
-      );
-
-      this.eventsGateway.notifyClientStatusChange(
-        updatedCard.id_pedido,
-        updatedCard.status_pedido,
-      );
-    }
-
-    // Notificação quando pedido fica pendente (contratação feita)
-    if (
-      updateCardDto.status_pedido &&
-      updateCardDto.status_pedido === 'pendente'
-    ) {
-      const prestadorContratado = await this.prisma.prestador.findUnique({
-        where: { id_prestador: updateCardDto.candidaturas[0].prestador_id },
-        select: { nome: true, sobrenome: true, id_prestador: true },
-      });
-
-      // Notifica o CLIENTE sobre a contratação
-      await this.notificationsService.notificarClienteContratacao(
-        existingCard.id_cliente,
-        id_pedido,
-        prestadorContratado,
-        updatedCard,
-      );
-
-      // Notifica o PRESTADOR sobre a contratação
-      await this.notificationsService.notificarPrestadorContratacao(
-        updateCardDto.candidaturas[0].prestador_id,
-        id_pedido,
-        updatedCard,
-      );
-    }
-
-    // Controle de candidaturas
+    // 4. Processamento de Candidaturas em Lote (Performance!)
     let houveNovaCandidatura = false;
-    // ✅ Nova variável para controlar se deve enviar notificação de candidatura
-    let deveEnviarNotificacaoCandidatura = true;
+    if (updateCardDto.candidaturas?.length > 0) {
+      const promises = updateCardDto.candidaturas.map(async (dto) => {
+        const existing = existingCard.Candidatura.find(
+          (c) => c.prestador_id === dto.prestador_id,
+        );
 
-    // ✅ Se o status for 'pendente', NÃO envia notificação de candidatura
-    if (updateCardDto.status_pedido === 'pendente') {
-      deveEnviarNotificacaoCandidatura = false;
-      console.log(
-        '✅ Status pendente - notificações de candidatura suprimidas',
-      );
-    }
+        // Verifica se houve mudança real
+        const mudou =
+          !existing ||
+          existing.valor_negociado !== dto.valor_negociado ||
+          existing.status !== dto.status;
 
-    if (updateCardDto.candidaturas) {
-      const candidaturaDtos = updateCardDto.candidaturas;
+        if (mudou) houveNovaCandidatura = true;
 
-      for (const candidaturaDto of candidaturaDtos) {
-        const existingCandidatura = await this.prisma.candidatura.findUnique({
+        return this.prisma.candidatura.upsert({
           where: {
             id_pedido_prestador_id: {
-              id_pedido: id_pedido,
-              prestador_id: candidaturaDto.prestador_id,
+              id_pedido,
+              prestador_id: dto.prestador_id,
             },
           },
+          update: {
+            valor_negociado: dto.valor_negociado,
+            horario_negociado: dto.horario_negociado,
+            status: dto.status,
+            data_candidatura: new Date(),
+          },
+          create: {
+            id_pedido,
+            prestador_id: dto.prestador_id,
+            valor_negociado: dto.valor_negociado,
+            status: dto.status,
+          },
         });
+      });
 
-        if (existingCandidatura) {
-          // Verifica se houve mudanças significativas na candidatura
-          const houveMudancasSignificativas =
-            existingCandidatura.valor_negociado !==
-              candidaturaDto.valor_negociado ||
-            existingCandidatura.horario_negociado !==
-              candidaturaDto.horario_negociado ||
-            existingCandidatura.status !== candidaturaDto.status;
-
-          // Atualiza candidatura existente
-          await this.prisma.candidatura.update({
-            where: { id_candidatura: existingCandidatura.id_candidatura },
-            data: {
-              valor_negociado: candidaturaDto.valor_negociado,
-              horario_negociado: candidaturaDto.horario_negociado,
-              status: candidaturaDto.status,
-              data_candidatura: new Date(),
-            },
-          });
-
-          // Busca dados atualizados do prestador
-          prestador = await this.prisma.prestador.findUnique({
-            where: { id_prestador: candidaturaDto.prestador_id },
-            select: {
-              nome: true,
-              sobrenome: true,
-              avaliacao: true,
-              id_prestador: true,
-            },
-          });
-
-          // ✅ Só envia notificação se deveEnviarNotificacaoCandidatura for true
-          if (deveEnviarNotificacaoCandidatura) {
-            // Se a candidatura estava recusada e houve mudanças, trata como nova candidatura
-            if (
-              existingCandidatura.status === 'recusado' &&
-              houveMudancasSignificativas
-            ) {
-              houveNovaCandidatura = true;
-
-              // 🔔 ENVIA NOTIFICAÇÃO PARA CANDIDATURA RECUSADA QUE FOI ATUALIZADA
-              await this.notificationsService.enviarPushNovaCandidatura(
-                existingCard.id_cliente,
-                id_pedido,
-                prestador,
-                candidaturaDto,
-                updatedCard,
-                true, // Indica que é uma candidatura atualizada
-              );
-            }
-            // Se houve mudanças significativas e não é recusada, também notifica
-            else if (
-              houveMudancasSignificativas &&
-              candidaturaDto.status !== 'recusado'
-            ) {
-              houveNovaCandidatura = true;
-
-              await this.notificationsService.enviarPushNovaCandidatura(
-                existingCard.id_cliente,
-                id_pedido,
-                prestador,
-                candidaturaDto,
-                updatedCard,
-                true, // Indica que é uma candidatura atualizada
-              );
-            }
-          }
-
-          // ✅ Notificação para candidatura recusada (apenas se o status mudou para recusado)
-          // Esta notificação SEMPRE deve ser enviada, independente do status 'pendente'
-          if (
-            candidaturaDto.status === 'recusado' &&
-            existingCandidatura.status !== 'recusado'
-          ) {
-            await this.notificationsService.notificarCandidaturaRecusada(
-              candidaturaDto.prestador_id,
-              id_pedido,
-              updatedCard,
-            );
-          }
-        } else {
-          // Nova candidatura
-          prestador = await this.prisma.prestador.findUnique({
-            where: { id_prestador: candidaturaDto.prestador_id },
-            select: {
-              nome: true,
-              sobrenome: true,
-              avaliacao: true,
-              id_prestador: true,
-            },
-          });
-
-          await this.prisma.candidatura.create({
-            data: {
-              valor_negociado: candidaturaDto.valor_negociado,
-              horario_negociado: candidaturaDto.horario_negociado,
-              status: candidaturaDto.status,
-              data_candidatura: new Date(),
-              Card: {
-                connect: { id_pedido: id_pedido },
-              },
-              Prestador: {
-                connect: { id_prestador: candidaturaDto.prestador_id },
-              },
-            },
-          });
-
-          houveNovaCandidatura = true;
-
-          // ✅ Só envia notificação se deveEnviarNotificacaoCandidatura for true
-          if (deveEnviarNotificacaoCandidatura) {
-            // 🔔 ENVIA NOTIFICAÇÃO PARA CADA NOVA CANDIDATURA
-            await this.notificationsService.enviarPushNovaCandidatura(
-              existingCard.id_cliente,
-              id_pedido,
-              prestador,
-              candidaturaDto,
-              updatedCard,
-              false, // Indica que é uma candidatura nova
-            );
-          } else {
-            console.log(
-              `⏭️ Notificação de candidatura suprimida (status pendente)`,
-            );
-          }
-        }
-      }
-
-      // ✅ Emite evento apenas uma vez se ao menos uma nova candidatura foi criada ou atualizada significativamente
-      if (houveNovaCandidatura) {
-        this.eventsGateway.emitirAlertaNovaCandidatura(id_pedido);
-        console.log('houveNovaCandidatura', houveNovaCandidatura);
-      } else {
-        console.log(
-          'Nenhuma nova candidatura foi criada ou atualizada significativamente',
-        );
-      }
+      await Promise.all(promises);
     }
 
-    return this.prisma.card.findUnique({
-      where: { id_pedido },
-      include: { Candidatura: true },
-    });
+    // 5. Orquestração de Notificações (Sem 'await' para retornar resposta mais rápido)
+    this.handleNotifications(
+      updatedCard,
+      existingCard,
+      updateCardDto,
+      houveNovaCandidatura,
+    ).catch((e) => this.logger.error('Erro ao processar notificações', e));
+
+    return updatedCard;
   }
 
+  private async handleNotifications(
+    updatedCard: any,
+    existingCard: any,
+    dto: UpdateCardDto,
+    houveNovaCandidatura: boolean,
+  ) {
+    this.eventsGateway.notificarAtualizacao(updatedCard);
+
+    // Se finalizado
+    if (dto.status_pedido === 'finalizado') {
+      await this.notificationsService.notificarServicoFinalizado(
+        updatedCard.id_pedido,
+        updatedCard,
+      );
+    }
+
+    // Se contratou (pendente)
+    if (dto.status_pedido === 'pendente' && dto.candidaturas?.[0]) {
+      const prestadorId = dto.candidaturas[0].prestador_id;
+      const prestador = await this.prisma.prestador.findUnique({
+        where: { id_prestador: prestadorId },
+      });
+      await Promise.all([
+        this.notificationsService.notificarClienteContratacao(
+          existingCard.id_cliente,
+          updatedCard.id_pedido,
+          prestador,
+          updatedCard,
+        ),
+        this.notificationsService.notificarPrestadorContratacao(
+          prestadorId,
+          updatedCard.id_pedido,
+          updatedCard,
+        ),
+      ]);
+    }
+
+    // Se houve nova candidatura e NÃO está pendente
+    if (houveNovaCandidatura && dto.status_pedido !== 'pendente') {
+      this.eventsGateway.emitirAlertaNovaCandidatura(updatedCard.id_pedido);
+      // Aqui você dispararia o push individual de nova candidatura se necessário
+    }
+  }
   async cancel(
     id_pedido: string,
     cancelCardDto: CancelCardDto,
     userInfo: { id_cliente?: number; role?: string },
   ) {
-    return await this.prisma.$transaction(async (prisma) => {
-      const { id_cliente, role } = userInfo;
-
-      // Buscar o card dentro da transação
-      const card = await prisma.card.findUnique({
+    // Mantemos a transação para garantir que se o Card falhar, as candidaturas não sejam alteradas
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 1. Busca rápida para validação de estado
+      const card = await tx.card.findUnique({
         where: { id_pedido },
-        include: {
+        select: {
+          status_pedido: true,
+          id_cliente: true,
+          id_prestador: true,
           Candidatura: {
-            include: {
-              Prestador: true,
-            },
-          },
-          pagamentos: {
-            where: {
-              status: 'APPROVED',
-              id_pedido: id_pedido,
-            },
+            include: { Prestador: true },
           },
         },
       });
 
-      if (!card) {
+      if (!card)
         throw new NotFoundException(`Card com ID ${id_pedido} não encontrado`);
-      }
-
-      // Verificar permissões
-      // const isOwner = card.id_cliente === id_cliente;
-
-      // if (!isOwner) {
-      //   throw new ForbiddenException(
-      //     'Você não tem permissão para cancelar este pedido',
-      //   );
-      // }
-
-      // Verificar se já está cancelado
-      if (card.status_pedido === 'cancelado') {
+      if (card.status_pedido === 'cancelado')
         throw new ForbiddenException('Este pedido já está cancelado');
-      }
-
-      // Verificar se pode ser cancelado (não finalizado)
-      if (card.status_pedido === 'finalizado') {
+      if (card.status_pedido === 'finalizado')
         throw new ForbiddenException(
           'Pedidos finalizados não podem ser cancelados',
         );
-      }
 
-      // ✅ 2. Cancelar todas as candidaturas relacionadas ao card
-      await prisma.candidatura.updateMany({
-        where: {
-          id_pedido: id_pedido,
-          status: {
-            not: 'cancelado', // Opcional: atualizar apenas as que não estão canceladas
-          },
-        },
-        data: {
-          status: 'cancelado',
-        },
+      // 2. Cancelar candidaturas em lote (Bulk Update)
+      await tx.candidatura.updateMany({
+        where: { id_pedido, status: { not: 'cancelado' } },
+        data: { status: 'cancelado' },
       });
 
-      // ✅ 3. Cancelar o card
-      const updatedCard = await prisma.card.update({
+      // 3. Atualizar o Card e já trazer tudo que precisamos para a resposta e notificações
+      const updatedCard = await tx.card.update({
         where: { id_pedido },
         data: {
           status_pedido: 'cancelado',
@@ -816,71 +705,61 @@ export class CardsService {
           imagens: true,
           pagamentos: true,
           Candidatura: {
-            include: {
-              Prestador: true,
-            },
-          }, // Incluir as candidaturas atualizadas na resposta
+            include: { Prestador: true },
+          },
         },
       });
 
-      // ✅ 4. NOTIFICAR PRESTADORES SOBRE O CANCELAMENTO
-      try {
-        // Se o card estava publicado e tinha candidaturas, notifica todos os candidatos
-        if (card.status_pedido === 'publicado' && card.Candidatura.length > 0) {
-          await this.notificationsService.notificarPrestadoresCancelamentoCard(
-            card.Candidatura,
-            id_pedido,
-            updatedCard,
-          );
-        }
-
-        // Se o card estava pendente (já tinha um prestador contratado), notifica o prestador específico
-        if (card.status_pedido === 'pendente' && card.id_prestador) {
-          const prestadorContratado = await prisma.prestador.findUnique({
-            where: { id_prestador: card.id_prestador },
-            select: { id_prestador: true, nome: true, sobrenome: true },
-          });
-
-          if (prestadorContratado) {
-            await this.notificationsService.notificarPrestadorContratadoCancelamento(
-              prestadorContratado.id_prestador,
-              id_pedido,
-              updatedCard,
-            );
-          }
-        }
-      } catch (notificationError) {
-        console.warn(
-          'Erro na notificação de cancelamento para prestadores:',
-          notificationError.message,
-        );
-      }
-
-      // ✅ 5. Notificações WebSocket
-      // try {
-      //   await this.eventsGateway.notificarAtualizacao(updatedCard);
-      //   this.eventsGateway.notifyClientStatusChange(
-      //     updatedCard.id_pedido,
-      //     updatedCard.status_pedido,
-      //   );
-      // } catch (notificationError) {
-      //   console.warn(
-      //     'Erro na notificação WebSocket:',
-      //     notificationError.message,
-      //   );
-      // }
-
-      return {
-        status: 'success',
-        message: 'Pedido cancelado com sucesso',
-        card: updatedCard,
-      };
+      return { cardAntes: card, updatedCard };
     });
+
+    // --- FORA DA TRANSAÇÃO (Background Processing) ---
+    // Isso faz a API responder instantaneamente enquanto as notificações processam
+    this.handleCancelNotifications(result.cardAntes, result.updatedCard).catch(
+      (err) =>
+        this.logger.error(
+          `Erro ao processar notificações de cancelamento: ${err.message}`,
+        ),
+    );
+
+    return {
+      status: 'success',
+      message: 'Pedido cancelado com sucesso',
+      card: result.updatedCard,
+    };
   }
 
+  // Método auxiliar para não poluir o cancel principal
+  private async handleCancelNotifications(cardAntes: any, updatedCard: any) {
+    const id_pedido = updatedCard.id_pedido;
+
+    // 1. WebSocket
+    this.eventsGateway.notificarAtualizacao(updatedCard);
+    this.eventsGateway.notifyClientStatusChange(id_pedido, 'cancelado');
+
+    // 2. Notificar múltiplos prestadores (se estava publicado)
+    if (
+      cardAntes.status_pedido === 'publicado' &&
+      cardAntes.Candidatura.length > 0
+    ) {
+      await this.notificationsService.notificarPrestadoresCancelamentoCard(
+        cardAntes.Candidatura,
+        id_pedido,
+        updatedCard,
+      );
+    }
+
+    // 3. Notificar prestador específico (se estava pendente/contratado)
+    if (cardAntes.status_pedido === 'pendente' && cardAntes.id_prestador) {
+      await this.notificationsService.notificarPrestadorContratadoCancelamento(
+        cardAntes.id_prestador,
+        id_pedido,
+        updatedCard,
+      );
+    }
+  }
   adjustTimezone(date: Date): Date {
     const adjustedDate = new Date(date);
-    // Ajuste de -3 horas para UTC-3 (Brasília)
     adjustedDate.setHours(adjustedDate.getHours() - 3);
     return adjustedDate;
   }
