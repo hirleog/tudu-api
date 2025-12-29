@@ -103,7 +103,7 @@ export class PagSeguroService {
     const headers = this.getHeaders();
     const httpConfig = this.getHttpConfig();
 
-    const expirationMinutes = 30;
+    const expirationMinutes = 1;
     const expirationDate = new Date();
     expirationDate.setMinutes(expirationDate.getMinutes() + expirationMinutes);
 
