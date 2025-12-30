@@ -22,6 +22,7 @@ import { NotificationLockService } from './notifications/service/notification-lo
 import { PagSeguroModule } from './pagseguro/pagseguro.module';
 import { PrestadorModule } from './prestador/prestador.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { PrismaModule } from './prisma/prisma.module';
     ConfigModule.forRoot({
       isGlobal: true, // para estar disponível em toda a aplicação
     }),
+    ScheduleModule.forRoot(),
 
     GeolocationModule,
 

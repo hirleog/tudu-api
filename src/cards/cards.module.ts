@@ -7,6 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { CardsController } from './cards.controller';
 import { CardsService } from './cards.service';
 import { EventsModule } from 'src/events/events.module';
+import { NotificationCleanupService } from 'src/notifications/notification-clean-up.service';
 
 @Module({
   imports: [PrismaModule, CloudinaryModule, EventsModule],
@@ -16,6 +17,7 @@ import { EventsModule } from 'src/events/events.module';
     PaymentsService,
     InstallmentsService,
     NotificationsService,
+    NotificationCleanupService,
   ],
   exports: [],
 })
