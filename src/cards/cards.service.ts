@@ -587,7 +587,7 @@ export class CardsService {
           },
           update: {
             valor_negociado: dto.valor_negociado,
-            horario_negociado: dto.horario_negociado,
+            horario_negociado: dto.horario_negociado, // Já estava aqui
             status: dto.status,
             data_candidatura: new Date(),
           },
@@ -595,6 +595,7 @@ export class CardsService {
             id_pedido,
             prestador_id: dto.prestador_id,
             valor_negociado: dto.valor_negociado,
+            horario_negociado: dto.horario_negociado, // ADICIONE ESTA LINHA AQUI!
             status: dto.status,
           },
         });
