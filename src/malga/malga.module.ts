@@ -7,6 +7,7 @@ import { MalgaController } from './controller/malga.controller';
 import { PaymentsService } from 'src/getnet/payments/payments.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { InstallmentsService } from 'src/getnet/installments/service/installments.service';
+import { EmailService } from 'src/email/email.service';
 
 @Module({
   imports: [HttpModule, ConfigModule],
@@ -15,6 +16,7 @@ import { InstallmentsService } from 'src/getnet/installments/service/installment
     PaymentsService,
     PrismaService,
     InstallmentsService,
+    EmailService,
   ],
   controllers: [MalgaController],
   exports: [MalgaService],

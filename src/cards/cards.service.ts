@@ -14,6 +14,7 @@ import { CreateCardDto } from './dto/create-card.dto';
 import { UpdateCardDto } from './dto/update-card.dto';
 import { Card } from './entities/showcase-card.entity';
 import { NotificationCleanupService } from 'src/notifications/notification-clean-up.service';
+import { EmailService } from 'src/email/email.service';
 @Injectable()
 export class CardsService {
   private readonly logger = new Logger(CardsService.name);
@@ -23,6 +24,7 @@ export class CardsService {
     private readonly eventsGateway: EventsGateway,
     private readonly notificationsService: NotificationsService,
     private readonly notificationCleanupService: NotificationCleanupService,
+    private readonly emailService: EmailService,
   ) {}
 
   async create(createCardDto: CreateCardDto, imagensUrl?: string[]) {
@@ -445,10 +447,13 @@ export class CardsService {
     };
   }
   async update(id_pedido: string, updateCardDto: UpdateCardDto) {
-    // 1. Busca inicial para validações (Apenas uma vez)
+    // 1. Busca inicial para validações (Incluindo Cliente para ter o e-mail)
     const existingCard = await this.prisma.card.findUnique({
       where: { id_pedido },
-      include: { Candidatura: true },
+      include: {
+        Candidatura: true,
+        Cliente: true, // <--- Adicionado para acessar os dados do cliente
+      },
     });
 
     if (!existingCard)
@@ -470,12 +475,34 @@ export class CardsService {
         categoria: updateCardDto.categoria ?? existingCard.categoria,
         valor: updateCardDto.valor ?? existingCard.valor,
         data_finalizacao: updateCardDto.data_finalizacao,
-        // ... espalhar outros campos se necessário
       },
-      include: { Candidatura: true },
+      include: {
+        Candidatura: true,
+        Cliente: true, // <--- Garantindo que o cliente venha no objeto atualizado
+      },
     });
 
-    // 4. Processamento de Candidaturas em Lote (Performance!)
+    // --- NOVA TRATATIVA: ENVIO DE E-MAIL SE STATUS FOR FINALIZADO ---
+    if (updateCardDto.status_pedido === 'finalizado') {
+      const emailCliente = updatedCard.Cliente?.email;
+
+      if (emailCliente) {
+        // Disparos em segundo plano (sem await para não travar a API)
+        this.emailService
+          .sendOrderCompleted(emailCliente, id_pedido)
+          .catch((err) =>
+            this.logger.error(`Erro e-mail conclusão: ${err.message}`),
+          );
+
+        this.emailService
+          .sendOrderReviewRequest(emailCliente, id_pedido)
+          .catch((err) =>
+            this.logger.error(`Erro e-mail avaliação: ${err.message}`),
+          );
+      }
+    }
+
+    // 4. Processamento de Candidaturas em Lote
     let houveNovaCandidatura = false;
     if (updateCardDto.candidaturas?.length > 0) {
       const promises = updateCardDto.candidaturas.map(async (dto) => {
@@ -483,7 +510,6 @@ export class CardsService {
           (c) => c.prestador_id === dto.prestador_id,
         );
 
-        // Verifica se houve mudança real
         const mudou =
           !existing ||
           existing.valor_negociado !== dto.valor_negociado ||
@@ -500,7 +526,7 @@ export class CardsService {
           },
           update: {
             valor_negociado: dto.valor_negociado,
-            horario_negociado: dto.horario_negociado, // Já estava aqui
+            horario_negociado: dto.horario_negociado,
             status: dto.status,
             data_candidatura: new Date(),
           },
@@ -508,7 +534,7 @@ export class CardsService {
             id_pedido,
             prestador_id: dto.prestador_id,
             valor_negociado: dto.valor_negociado,
-            horario_negociado: dto.horario_negociado, // ADICIONE ESTA LINHA AQUI!
+            horario_negociado: dto.horario_negociado,
             status: dto.status,
           },
         });
@@ -517,7 +543,7 @@ export class CardsService {
       await Promise.all(promises);
     }
 
-    // 5. Orquestração de Notificações (Sem 'await' para retornar resposta mais rápido)
+    // 5. Orquestração de Notificações
     this.handleNotifications(
       updatedCard,
       existingCard,

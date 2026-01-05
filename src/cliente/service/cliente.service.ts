@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
@@ -20,6 +21,8 @@ import { VerificationService } from 'src/email/verification.service';
 
 @Injectable()
 export class ClienteService {
+  private readonly logger = new Logger(ClienteService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private emailService: EmailService,
@@ -30,6 +33,7 @@ export class ClienteService {
     const toLowerCaseDto = normalizeStrings(createClienteDto, ['password']);
     const hashedPassword = await bcrypt.hash(createClienteDto.password, 10);
 
+    // 1. Validações de duplicidade
     const existingEmail = await this.prisma.cliente.findUnique({
       where: { email: toLowerCaseDto.email },
     });
@@ -48,6 +52,7 @@ export class ClienteService {
       }
     }
 
+    // 2. Criação do Cliente no Banco
     const payload = await this.prisma.cliente.create({
       data: {
         telefone: toLowerCaseDto.telefone,
@@ -64,6 +69,16 @@ export class ClienteService {
         endereco_numero: toLowerCaseDto.endereco_numero,
       },
     });
+
+    // 🚀 AÇÃO NOVA: ENVIO DE E-MAIL DE BOAS-VINDAS
+    // Disparo assíncrono para não atrasar a resposta da API (Performance)
+    this.emailService
+      .sendWelcomeEmail(payload.email, payload.nome)
+      .catch((err) => {
+        this.logger.error(
+          `Erro ao enviar e-mail de boas-vindas para ${payload.email}: ${err.message}`,
+        );
+      });
 
     return payload;
   }
