@@ -1,5 +1,5 @@
 // src/malga/malga.service.ts
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
@@ -14,6 +14,7 @@ import {
 } from '../dto/create-create.dto';
 import { PaymentsService } from 'src/getnet/payments/payments.service';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { EmailService } from 'src/email/email.service';
 
 @Injectable()
 export class MalgaService {
@@ -21,12 +22,14 @@ export class MalgaService {
   private readonly apiKey: string;
   private readonly clientId: string;
   private readonly merchantId: string;
+  private readonly logger = new Logger(MalgaService.name);
 
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private paymentsService: PaymentsService,
     private prisma: PrismaService,
+    private emailService: EmailService,
   ) {
     this.apiUrl =
       process.env.NODE_ENV !== 'production'
@@ -433,24 +436,17 @@ export class MalgaService {
   }
 
   async tokenizeAndPay(payload: any) {
-    let pagamentoRegistrado = null;
-
     try {
       const malgaPayload = {
+        // ... (mantido seu payload original da Malga)
         appInfo: {
           platform: {
             integrator: 'tudu-manager',
             name: 'TUDU Serviços',
             version: '1.0',
           },
-          device: {
-            name: 'iOS',
-            version: '10.12',
-          },
-          system: {
-            name: 'VTEX',
-            version: '13.12',
-          },
+          device: { name: 'iOS', version: '10.12' },
+          system: { name: 'VTEX', version: '13.12' },
         },
         merchantId: this.merchantId,
         amount: payload.amount,
@@ -469,6 +465,7 @@ export class MalgaService {
         },
       };
 
+      // 1. Chamada para a Malga (único await obrigatório para saber o status)
       const response = await firstValueFrom(
         this.httpService.post(`${this.apiUrl}/charges`, malgaPayload, {
           headers: this.getHeaders(),
@@ -477,34 +474,56 @@ export class MalgaService {
 
       const responseData = response.data;
 
-      // 3. Registrar pagamento no banco - ATUALIZADO
-      pagamentoRegistrado = await this.paymentsService.criarPagamento({
-        id_pagamento: responseData.id,
-        id_pedido: payload.id_pedido,
-        total_amount: payload.amount,
-        origin_amount: payload.originAmount, // valor sem juros
-        status: responseData.status,
-        auth_code: responseData.authorizationCode,
-        response_description:
-          payload.status === 'authorized'
-            ? 'Pagamento realizado com sucesso'
-            : 'Pré-autorização realizada com sucesso',
-        installments: payload.installments,
-        installments_amount:
-          payload.credit?.amount_installment ||
-          Math.round(payload.amount / payload.installments),
-        authorization_date: responseData.createdAt
-          ? new Date(responseData.createdAt)
-          : new Date(),
-        type: 'CREDIT_CARD',
-        host: 'MALGA',
-        charge_id: responseData.id, // Guardar o chargeId para captura futura
-      });
+      // 🚀 OTIMIZAÇÃO DE PERFORMANCE:
+      // Disparamos o registro no banco e o envio de e-mail ao mesmo tempo (Promise.all não bloqueante)
+      // ou simplesmente disparando-os sem await se não precisarmos do retorno imediato.
 
-      // 4. Retornar resposta de SUCESSO
-      return {
-        responseData,
-      };
+      // 2. Registro no Banco (sem travar o retorno da API se desejar velocidade máxima)
+      this.paymentsService
+        .criarPagamento({
+          id_pagamento: responseData.id,
+          id_pedido: payload.id_pedido,
+          total_amount: payload.amount,
+          origin_amount: payload.originAmount,
+          status: responseData.status,
+          auth_code: responseData.authorizationCode,
+          response_description: 'Processado via fluxo de crédito',
+          installments: payload.installments,
+          installments_amount:
+            payload.credit?.amount_installment ||
+            Math.round(payload.amount / payload.installments),
+          authorization_date: responseData.createdAt
+            ? new Date(responseData.createdAt)
+            : new Date(),
+          type: 'CREDIT_CARD',
+          host: 'MALGA',
+          charge_id: responseData.id,
+        })
+        .catch((e) =>
+          this.logger.error(`Erro ao registrar pagamento no DB: ${e.message}`),
+        );
+
+      // 3. Busca do Cliente e Envio do E-mail (Totalmente em background)
+      this.prisma.card
+        .findUnique({
+          where: { id_pedido: payload.id_pedido },
+          include: { Cliente: true },
+        })
+        .then((card) => {
+          if (card?.Cliente?.email) {
+            this.emailService.sendPaymentConfirmation(
+              card.Cliente.email,
+              payload.id_pedido,
+              payload.amount / 100,
+            );
+          }
+        })
+        .catch((e) =>
+          this.logger.error(`Erro no fluxo de e-mail: ${e.message}`),
+        );
+
+      // 4. Retorno IMEDIATO para o front-end
+      return { responseData };
     } catch (error) {
       console.error(
         'Error processing payment with Malga:',
@@ -519,7 +538,7 @@ export class MalgaService {
       const installments = payload.paymentMethod?.installments || 1;
 
       // 5. Registrar pagamento com ERRO no banco
-      pagamentoRegistrado = await this.paymentsService.criarPagamento({
+      this.paymentsService.criarPagamento({
         id_pagamento: errorDetails?.id,
         id_pedido: payload.id_pedido,
         total_amount: payload.amount,

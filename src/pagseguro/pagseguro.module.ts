@@ -8,6 +8,7 @@ import * as https from 'https';
 import { EventsGateway } from 'src/events/events.gateway';
 import { NotificationsService } from 'src/notifications/service/notifications.service';
 import { EventsModule } from 'src/events/events.module';
+import { EmailService } from 'src/email/email.service';
 
 @Module({
   imports: [
@@ -25,7 +26,12 @@ import { EventsModule } from 'src/events/events.module';
     EventsModule,
   ],
   controllers: [PagSeguroController],
-  providers: [PagSeguroService, PrismaService, NotificationsService],
+  providers: [
+    PagSeguroService,
+    PrismaService,
+    NotificationsService,
+    EmailService,
+  ],
   exports: [PagSeguroService],
 })
 export class PagSeguroModule {}

@@ -8,6 +8,7 @@ import { CardsController } from './cards.controller';
 import { CardsService } from './cards.service';
 import { EventsModule } from 'src/events/events.module';
 import { NotificationCleanupService } from 'src/notifications/notification-clean-up.service';
+import { EmailService } from 'src/email/email.service';
 
 @Module({
   imports: [PrismaModule, CloudinaryModule, EventsModule],
@@ -18,6 +19,7 @@ import { NotificationCleanupService } from 'src/notifications/notification-clean
     InstallmentsService,
     NotificationsService,
     NotificationCleanupService,
+    EmailService,
   ],
   exports: [],
 })

@@ -9,6 +9,7 @@ import * as https from 'https';
 import { EventsGateway } from 'src/events/events.gateway';
 import { NotificationsService } from 'src/notifications/service/notifications.service';
 import { PIX_CONFIG } from 'src/shared/constants';
+import { EmailService } from 'src/email/email.service';
 
 @Injectable()
 export class PagSeguroService {
@@ -22,8 +23,8 @@ export class PagSeguroService {
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
     private readonly prisma: PrismaService,
-    private readonly eventsGateway: EventsGateway,
     private readonly notificationsService: NotificationsService,
+    private readonly emailService: EmailService,
   ) {
     this.initializeConfig();
   }
@@ -402,29 +403,24 @@ export class PagSeguroService {
       throw new HttpException(userMessage, statusCode);
     }
   }
-
   async handlePagBankWebhook(
     webhookData: any,
     signature: string,
     notificationId: string,
   ): Promise<void> {
     const orderId = webhookData.id;
-    const referenceId = webhookData.reference_id;
+    const referenceId = webhookData.reference_id; // id_pedido
 
-    // O status pode vir no campo 'status' do Order (Checkout) ou 'chargeStatus' do Charge (Transacional)
     const status = webhookData.status;
     const charge = webhookData.charges?.[0];
     const chargeStatus = charge?.status;
 
-    // Priorizamos o status da cobrança (chargeStatus) se existir,
-    // pois ele é mais granular para o evento transacional.
     const effectiveStatus = chargeStatus || status;
 
     this.logger.log(
-      `Webhook recebido para Order ID: ${orderId}, Reference ID: ${referenceId}, Status efetivo: ${effectiveStatus}. STATUS: ${chargeStatus}, orderStatus=${status}`,
+      `Webhook recebido para Order ID: ${orderId}, Reference ID: ${referenceId}, Status efetivo: ${effectiveStatus}.`,
     );
 
-    // Mapeamento dos status do PagBank para os status do seu banco de dados (Prisma)
     let finalStatus:
       | 'paid'
       | 'pending'
@@ -435,65 +431,51 @@ export class PagSeguroService {
     let logMessage: string;
     let notifyFrontend: boolean = true;
 
-    // --- Lógica de Decisão e Mapeamento de Status ---
-
+    // --- Mapeamento de Status ---
     switch (effectiveStatus) {
       case 'PAID':
         finalStatus = 'paid';
         logMessage = `✅ Pagamento ${referenceId} (${orderId}) marcado como PAGO via webhook.`;
         break;
-
       case 'IN_ANALYSIS':
         finalStatus = 'in_analysis';
         logMessage = `⚠️ Pagamento ${referenceId} (${orderId}) em ANÁLISE de risco.`;
         break;
-
       case 'DECLINED':
         finalStatus = 'declined';
-        logMessage = `❌ Pagamento ${referenceId} (${orderId}) foi REJEITADO (Declined).`;
+        logMessage = `❌ Pagamento ${referenceId} (${orderId}) foi REJEITADO.`;
         break;
-
       case 'CANCELLED':
         finalStatus = 'cancelled';
         logMessage = `🛑 Pagamento ${referenceId} (${orderId}) foi CANCELADO.`;
         break;
-
       case 'WAITING':
-        // Se o PagBank enviar 'WAITING' (transacional), mantemos como 'pending'.
         finalStatus = 'pending';
-        logMessage = `⏳ Pagamento ${referenceId} (${orderId}) AGUARDANDO pagamento.`;
-        // Não precisa notificar o front se o status já era pending
+        logMessage = `⏳ Pagamento ${referenceId} (${orderId}) AGUARDANDO.`;
         notifyFrontend = false;
         break;
-
       case 'EXPIRED':
-        // Webhook de Checkout: Expiração do link/checkout
         finalStatus = 'expired';
-        logMessage = `⌛ Checkout ${referenceId} (${orderId}) EXPIROU (tempo limite excedido).`;
+        logMessage = `⌛ Checkout ${referenceId} (${orderId}) EXPIROU.`;
         break;
-
       default:
-        // Lidar com status desconhecidos ou inicial (e.g., CREATED)
-        this.logger.warn(
-          `Webhook recebido com status desconhecido/ignorado: ${effectiveStatus}`,
-        );
-        return; // Sai do método sem atualizar ou notificar
+        this.logger.warn(`Status desconhecido: ${effectiveStatus}`);
+        return;
     }
 
-    // --- Lógica de Atualização do DB ---
-
-    // 1. Buscar o Card para obter o Cliente ID.
+    // --- Busca do Card e Cliente ---
+    // Alterado para include para obter o e-mail necessário para o envio
     const card = await this.prisma.card.findUnique({
       where: { id_pedido: referenceId },
-      select: { id_cliente: true }, // <--- CORREÇÃO: Seleciona a FK diretamente
+      include: { Cliente: true },
     });
-    // 2. Atualizar DB (Apenas se o status for diferente do atual no DB, para evitar escritas desnecessárias)
+
+    // --- Atualização do Banco ---
     const updateResult = await this.prisma.pagamento.updateMany({
       where: { reference_id: referenceId, status: { not: finalStatus } },
       data: {
         status: finalStatus,
         charge_id: charge?.id,
-        // Apenas PAID tem o paid_at
         paid_at:
           finalStatus === 'paid'
             ? new Date(charge?.paid_at || Date.now())
@@ -505,73 +487,51 @@ export class PagSeguroService {
     if (updateResult.count > 0) {
       this.logger.log(logMessage);
 
-      // 🚀 AÇÃO NOVA: NOTIFICAÇÃO DE SUCESSO DE PAGAMENTO
-      // Usa card.id_cliente (campo simples)
-      if (finalStatus === 'paid' && card?.id_cliente) {
-        const amountValue = charge?.amount?.value || webhookData.amount?.value;
+      // --- Fluxo de Sucesso (PAID) ---
+      if (finalStatus === 'paid' && card) {
+        const amountValueCentavos =
+          charge?.amount?.value || webhookData.amount?.value;
+        const amountReal = amountValueCentavos ? amountValueCentavos / 100 : 0;
 
-        // Verifica se o valor é válido antes de chamar o serviço
-        if (amountValue && amountValue > 0) {
+        // 1. Notificação de Sistema Interna
+        if (amountValueCentavos && amountValueCentavos > 0) {
           await this.notificationsService.notificarSucessoPagamento(
-            card.id_cliente, // <--- CORRIGIDO: Passa o campo simples 'id_cliente'
+            card.id_cliente,
             referenceId,
-            amountValue,
+            amountValueCentavos,
           );
         }
 
-        this.logger.log(
-          `notifyFrontend está ${notifyFrontend} para pagamento PAID.`,
-        );
+        // 2. Envio de E-mail de Confirmação (Performance: sem await)
+        if (card.Cliente?.email) {
+          this.emailService
+            .sendPaymentConfirmation(
+              card.Cliente.email,
+              referenceId,
+              amountReal,
+            )
+            .catch((err) =>
+              this.logger.error(
+                `Falha ao enviar e-mail de pagamento: ${err.message}`,
+              ),
+            );
+        }
 
+        // 3. Notificação WebSocket para o Frontend
         if (notifyFrontend) {
           this.logger.log(
-            `entrou no fluxo de notificar o front end para pagamento PAID.`,
-          );
-          // 🚀 Notificar o Front via WebSocket
-          this.logger.log(
-            `Tentando notificar socket para a sala: order:${referenceId}`,
+            `Notificando WebSocket para sala: order:${referenceId}`,
           );
           // this.eventsGateway.notifyPaymentSuccess(referenceId, {
-          //   message: this.getFrontendMessage(finalStatus),
           //   status: finalStatus,
-          //   pagbank_id: orderId,
-          //   amount: charge?.amount?.value || webhookData.amount?.value,
+          //   amount: amountReal
           // });
         }
-
-        return;
       }
     } else {
       this.logger.debug(
-        `Status ${finalStatus} para ${referenceId} já estava no DB ou não encontrado.`,
+        `Status ${finalStatus} para ${referenceId} já estava no DB.`,
       );
-      // Se o DB já estava no status final e não é o evento 'paid', não precisa notificar o front
-      if (finalStatus !== 'paid') {
-        notifyFrontend = false;
-      }
-    }
-
-    // --- Lógica de Notificação do Frontend (WebSocket) ---
-  }
-  /**
-   * Método auxiliar para gerar mensagens amigáveis para o Frontend
-   */
-  private getFrontendMessage(status: string): string {
-    switch (status) {
-      case 'paid':
-        return 'Pagamento PIX confirmado com sucesso!';
-      case 'in_analysis':
-        return 'Transação em análise de risco.';
-      case 'declined':
-        return 'Pagamento foi rejeitado. Tente novamente ou use outro método.';
-      case 'cancelled':
-        return 'Pagamento foi cancelado.';
-      case 'expired':
-        return 'O tempo para o pagamento PIX expirou.';
-      case 'pending':
-        return 'Aguardando pagamento.';
-      default:
-        return 'Status de pagamento atualizado.';
     }
   }
 }
