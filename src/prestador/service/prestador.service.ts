@@ -17,6 +17,7 @@ import {
 import { normalizeStrings } from 'src/utils/utils';
 import { EmailService } from 'src/email/email.service';
 import { VerificationService } from 'src/email/verification.service';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 @Injectable()
 export class PrestadorService {
@@ -24,61 +25,88 @@ export class PrestadorService {
     private readonly prisma: PrismaService,
     private emailService: EmailService,
     private verificationService: VerificationService,
+    private cloudinaryService: CloudinaryService,
   ) {}
 
-  async createPrestador(createPrestadorDto: CreatePrestadorDto) {
+  async createPrestador(
+    createPrestadorDto: any,
+    files: {
+      documento_frente?: Express.Multer.File[];
+      documento_verso?: Express.Multer.File[];
+    },
+  ) {
+    // 1. Normalização e Hash
     const toLowerCaseDto = normalizeStrings(createPrestadorDto, ['password']);
     const hashedPassword = await bcrypt.hash(createPrestadorDto.password, 10);
 
-    // Verifica se o email já existe
-    const data = Object.fromEntries(
-      Object.entries(toLowerCaseDto).filter(
-        ([_, value]) => value !== undefined,
-      ),
-    );
-
-    // Verifica se o email já existe
+    // 2. Validações de Duplicidade
     const existingEmail = await this.prisma.prestador.findUnique({
-      where: { email: data.email },
+      where: { email: toLowerCaseDto.email },
     });
+    if (existingEmail) throw new ConflictException('O email já está em uso.');
 
-    if (existingEmail) {
-      throw new ConflictException('O email já está em uso.');
-    }
-
-    // Verifica se o CPF já existe
-    if (data.cpf) {
+    if (toLowerCaseDto.cpf) {
       const existingCpf = await this.prisma.prestador.findUnique({
-        where: { cpf: data.cpf },
+        where: { cpf: toLowerCaseDto.cpf },
       });
-
-      if (existingCpf) {
-        throw new ConflictException('O CPF já está em uso.');
-      }
+      if (existingCpf) throw new ConflictException('O CPF já está em uso.');
     }
 
-    // Cria o registro na tabela Prestador
-    const payload = await this.prisma.prestador.create({
+    // 3. Upload das Imagens para o Cloudinary
+    let urlFrente = null;
+    let urlVerso = null;
+
+    try {
+      if (files.documento_frente?.[0]) {
+        const resFrente = await this.cloudinaryService.uploadIdentityDocument(
+          files.documento_frente[0].buffer,
+          files.documento_frente[0].originalname,
+        );
+        urlFrente = resFrente.secure_url;
+      }
+
+      if (files.documento_verso?.[0]) {
+        const resVerso = await this.cloudinaryService.uploadIdentityDocument(
+          files.documento_verso[0].buffer,
+          files.documento_verso[0].originalname,
+        );
+        urlVerso = resVerso.secure_url;
+      }
+    } catch (error) {
+      throw new InternalServerErrorException(
+        'Erro ao fazer upload dos documentos.',
+      );
+    }
+
+    // 4. Criação no Prisma
+    return this.prisma.prestador.create({
       data: {
-        telefone: toLowerCaseDto.telefone,
         nome: toLowerCaseDto.nome,
         sobrenome: toLowerCaseDto.sobrenome,
-        cpf: toLowerCaseDto.cpf,
-        data_nascimento: toLowerCaseDto.data_nascimento,
         email: toLowerCaseDto.email,
         password: hashedPassword,
+        telefone: toLowerCaseDto.telefone,
+        cpf: toLowerCaseDto.cpf,
+        data_nascimento: toLowerCaseDto.data_nascimento,
+
+        // Novos campos do Onboarding
+        especialidades_selecionadas: toLowerCaseDto.especialidades_selecionadas,
+        documento_frente: urlFrente,
+        documento_verso: urlVerso,
+        status_verificacao: 'PENDENTE',
+
+        // Endereço (se vier no DTO)
         endereco_estado: toLowerCaseDto.endereco_estado,
         endereco_cidade: toLowerCaseDto.endereco_cidade,
         endereco_bairro: toLowerCaseDto.endereco_bairro,
         endereco_rua: toLowerCaseDto.endereco_rua,
         endereco_numero: toLowerCaseDto.endereco_numero,
-        especializacao: toLowerCaseDto.especializacao,
-        descricao: toLowerCaseDto.descricao,
+
+        // Default
         avaliacao: toLowerCaseDto.avaliacao,
+        numero_servicos_feitos: 0,
       },
     });
-
-    return payload;
   }
 
   async getById(id: number) {

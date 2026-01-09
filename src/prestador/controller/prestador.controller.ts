@@ -8,13 +8,13 @@ import {
   Patch,
   Post,
   UploadedFile,
+  UploadedFiles,
 } from '@nestjs/common';
-import { CreatePrestadorDto } from '../dto/create-prestador.dto';
 import { UpdatePrestadorDto } from '../dto/update-prestador.dto';
 import { PrestadorService } from '../service/prestador.service';
 
 import { UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import * as sharp from 'sharp';
 
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
@@ -37,8 +37,23 @@ export class PrestadorController {
   }
 
   @Post()
-  async createPrestador(@Body() createPrestadorDto: CreatePrestadorDto) {
-    return this.prestadorService.createPrestador(createPrestadorDto);
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'documento_frente', maxCount: 1 },
+      { name: 'documento_verso', maxCount: 1 },
+    ]),
+  )
+  async createPrestador(
+    @Body('prestadorData') prestadorDataRaw: string,
+    @UploadedFiles()
+    files: {
+      documento_frente?: Express.Multer.File[];
+      documento_verso?: Express.Multer.File[];
+    },
+  ) {
+    // Importante: parsear o JSON que o FormData enviou como string
+    const createPrestadorDto = JSON.parse(prestadorDataRaw);
+    return this.prestadorService.createPrestador(createPrestadorDto, files);
   }
 
   @Patch(':id')

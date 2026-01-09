@@ -99,4 +99,28 @@ export class CloudinaryService {
       stream.end(buffer);
     });
   }
+
+  async uploadIdentityDocument(
+    buffer: Buffer,
+    filename: string,
+  ): Promise<UploadApiResponse> {
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'prestadores-documentos',
+          public_id: `doc_${Date.now()}_${filename.split('.')[0]}`,
+          resource_type: 'image',
+          format: 'webp',
+          // Como é documento, não usamos compressão agressiva para manter a legibilidade
+          quality: 'auto:best',
+        },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result);
+        },
+      );
+
+      Readable.from(buffer).pipe(uploadStream);
+    });
+  }
 }
