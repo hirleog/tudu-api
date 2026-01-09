@@ -33,32 +33,40 @@ model Cliente {
 }
 
 model Prestador {
-  id_prestador           Int                @id @default(autoincrement())
-  telefone               String?
-  nome                   String
-  sobrenome              String
-  cpf                    String?            @unique
-  data_nascimento        String?
-  email                  String             @unique
-  password               String
-  endereco_estado        String?
-  endereco_cidade        String?
-  endereco_bairro        String?
-  endereco_rua           String?
-  endereco_numero        String?
+  id_prestador    Int     @id @default(autoincrement())
+  telefone        String?
+  nome            String
+  sobrenome       String
+  cpf             String? @unique
+  data_nascimento String?
+  email           String  @unique
+  password        String
+  endereco_estado String?
+  endereco_cidade String?
+  endereco_bairro String?
+  endereco_rua    String?
+  endereco_numero String?
+
+  // Novos campos para o fluxo moderno
+  especialidades_selecionadas String? @db.Text
+  documento_frente            String?
+  documento_verso             String?
+  status_verificacao          String  @default("PENDENTE")
+
   especializacao         String?
-  descricao              String?            @db.Text
+  descricao              String?  @db.Text
   avaliacao              String?
-  created_at             DateTime           @default(now())
-  updated_at             DateTime           @default(now()) @updatedAt
   foto                   String?
-  numero_servicos_feitos Int?
-  Candidatura            Candidatura[]
-  Card                   Card[]
-  Experiencias           Experiencia[]      @relation("PrestadorExperiencias")
-  Certificacoes          Certificacao[]     @relation("PrestadorCertificacoes")
-  notifications          Notification[]
-  userSubscriptions      UserSubscription[]
+  numero_servicos_feitos Int?     @default(0)
+  created_at             DateTime @default(now())
+  updated_at             DateTime @default(now()) @updatedAt
+
+  Candidatura       Candidatura[]
+  Card              Card[]
+  Experiencias      Experiencia[]      @relation("PrestadorExperiencias")
+  Certificacoes     Certificacao[]     @relation("PrestadorCertificacoes")
+  notifications     Notification[]
+  userSubscriptions UserSubscription[]
 }
 
 // NOVA TABELA: Experiência Profissional
@@ -240,4 +248,3 @@ model UserSubscription {
 
   @@index([clienteId, prestadorId])
 }
-
