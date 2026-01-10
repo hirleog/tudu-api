@@ -854,21 +854,30 @@ export class CardsService {
       },
       disabled: false,
     },
+    // {
+    //   id: 9,
+    //   icon: 'fas fa-wifi',
+    //   cardDetail: {
+    //     label: 'Redes e Tecnologia',
+    //     value: 'Redes e Tecnologia',
+    //   },
+    //   disabled: false,
+    // },
+    // {
+    //   id: 10,
+    //   icon: 'fas fa-truck-moving',
+    //   cardDetail: {
+    //     label: 'Frete e Mudanças',
+    //     value: 'Frete e Mudanças',
+    //   },
+    //   disabled: false,
+    // },
     {
-      id: 9,
-      icon: 'fas fa-wifi',
+      id: 11, // Incremente o ID conforme sua lista
+      icon: 'fas fa-tree',
       cardDetail: {
-        label: 'Redes e Tecnologia',
-        value: 'Redes e Tecnologia',
-      },
-      disabled: false,
-    },
-    {
-      id: 10,
-      icon: 'fas fa-truck-moving',
-      cardDetail: {
-        label: 'Frete e Mudanças',
-        value: 'Frete e Mudanças',
+        label: 'Marcenaria',
+        value: 'Marcenaria',
       },
       disabled: false,
     },
