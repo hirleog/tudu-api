@@ -10,11 +10,12 @@ import {
   UploadedFile,
   UploadedFiles,
 } from '@nestjs/common';
+import { CreatePrestadorDto } from '../dto/create-prestador.dto';
 import { UpdatePrestadorDto } from '../dto/update-prestador.dto';
 import { PrestadorService } from '../service/prestador.service';
 
 import { UseInterceptors } from '@nestjs/common';
-import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import * as sharp from 'sharp';
 
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
@@ -37,23 +38,8 @@ export class PrestadorController {
   }
 
   @Post()
-  @UseInterceptors(
-    FileFieldsInterceptor([
-      { name: 'documento_frente', maxCount: 1 },
-      { name: 'documento_verso', maxCount: 1 },
-    ]),
-  )
-  async createPrestador(
-    @Body('prestadorData') prestadorDataRaw: string,
-    @UploadedFiles()
-    files: {
-      documento_frente?: Express.Multer.File[];
-      documento_verso?: Express.Multer.File[];
-    },
-  ) {
-    // Importante: parsear o JSON que o FormData enviou como string
-    const createPrestadorDto = JSON.parse(prestadorDataRaw);
-    return this.prestadorService.createPrestador(createPrestadorDto, files);
+  async createPrestador(@Body() createPrestadorDto: CreatePrestadorDto) {
+    return this.prestadorService.createPrestador(createPrestadorDto);
   }
 
   @Patch(':id')
@@ -101,6 +87,37 @@ export class PrestadorController {
     );
 
     return result;
+  }
+
+  @Post('complete-onboarding')
+  @UseInterceptors(FilesInterceptor('documentos', 2))
+  async completeOnboarding(
+    @Body('prestadorData') prestadorDataRaw: string,
+    @UploadedFiles() documentos: Express.Multer.File[],
+  ) {
+    if (!prestadorDataRaw) {
+      throw new BadRequestException('Dados do prestador não informados.');
+    }
+
+    if (!documentos || documentos.length < 2) {
+      throw new BadRequestException(
+        'São necessários 2 arquivos (frente e verso).',
+      );
+    }
+
+    let data: any;
+
+    try {
+      data = JSON.parse(prestadorDataRaw);
+    } catch (error) {
+      throw new BadRequestException('Erro ao processar dados do prestador.');
+    }
+
+    return this.prestadorService.completeOnboarding(
+      data.email,
+      data,
+      documentos,
+    );
   }
 
   // FLUXO DE REDEFINIÇÃO DE SENHA COM TOKEN DE VERIFICAÇÃO POR EMAIL

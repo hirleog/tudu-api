@@ -784,10 +784,10 @@ export class CardsService {
   private readonly showcaseCards: Card[] = [
     {
       id: 1,
-      icon: 'fas fa-tools',
+      icon: 'fas fa-bolt',
       cardDetail: {
-        label: 'Reparos e Manutenção',
-        value: 'reparos',
+        label: 'Reparos Elétricos e Hidráulicos',
+        value: 'Reparos Elétricos e Hidráulicos',
       },
       disabled: false,
     },
@@ -795,44 +795,80 @@ export class CardsService {
       id: 2,
       icon: 'fas fa-broom',
       cardDetail: {
-        label: 'Limpeza e Higienização',
-        value: 'limpeza',
+        label: 'Limpeza e Faxina',
+        value: 'Limpeza e Faxina',
       },
       disabled: false,
     },
     {
       id: 3,
-      icon: 'fas fa-hard-hat',
+      icon: 'fas fa-couch',
       cardDetail: {
-        label: 'Reformas e Construção',
-        value: 'construcao',
+        label: 'Higienização de Estofados',
+        value: 'Higienização de Estofados',
       },
       disabled: false,
     },
     {
       id: 4,
-      icon: 'fas fa-cogs',
+      icon: 'fas fa-paint-roller',
       cardDetail: {
-        label: 'Montagem e Instalação',
-        value: 'montagem',
+        label: 'Reformas e Pintura',
+        value: 'Reformas e Pintura',
       },
       disabled: false,
     },
     {
       id: 5,
-      icon: 'fas fa-seedling',
+      icon: 'fas fa-hammer',
       cardDetail: {
-        label: 'Jardim e Piscina',
-        value: 'jardim',
+        label: 'Montagem de Móveis',
+        value: 'Montagem de Móveis',
       },
       disabled: false,
     },
     {
       id: 6,
-      icon: 'fas fa-ellipsis-h',
+      icon: 'fas fa-user-shield',
       cardDetail: {
-        label: 'Outros serviços',
-        value: 'outros',
+        label: 'Marido de Aluguel (Faz-Tudo)',
+        value: 'Marido de Aluguel (Faz-Tudo)',
+      },
+      disabled: false,
+    },
+    {
+      id: 7,
+      icon: 'fas fa-leaf',
+      cardDetail: {
+        label: 'Jardim e Piscina',
+        value: 'Jardim e Piscina',
+      },
+      disabled: false,
+    },
+    {
+      id: 8,
+      icon: 'fas fa-snowflake',
+      cardDetail: {
+        label: 'Ar-Condicionado',
+        value: 'Ar-Condicionado',
+      },
+      disabled: false,
+    },
+    {
+      id: 9,
+      icon: 'fas fa-wifi',
+      cardDetail: {
+        label: 'Redes e Tecnologia',
+        value: 'Redes e Tecnologia',
+      },
+      disabled: false,
+    },
+    {
+      id: 10,
+      icon: 'fas fa-truck-moving',
+      cardDetail: {
+        label: 'Frete e Mudanças',
+        value: 'Frete e Mudanças',
       },
       disabled: false,
     },

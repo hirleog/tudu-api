@@ -38,17 +38,18 @@ export class ClienteService {
       where: { email: toLowerCaseDto.email },
     });
 
+    // Alterado de 'new Error' para 'ConflictException' (Retorna 409)
     if (existingEmail) {
-      throw new Error('O email já está em uso.');
+      throw new ConflictException('O email já está em uso.');
     }
 
-    if (createClienteDto.cpf) {
+    if (toLowerCaseDto.cpf) {
       const existingCpf = await this.prisma.cliente.findUnique({
-        where: { cpf: createClienteDto.cpf },
+        where: { cpf: toLowerCaseDto.cpf },
       });
 
       if (existingCpf) {
-        throw new Error('O CPF já está em uso.');
+        throw new ConflictException('O CPF já está em uso.');
       }
     }
 
@@ -70,8 +71,7 @@ export class ClienteService {
       },
     });
 
-    // 🚀 AÇÃO NOVA: ENVIO DE E-MAIL DE BOAS-VINDAS
-    // Disparo assíncrono para não atrasar a resposta da API (Performance)
+    // 🚀 AÇÃO: ENVIO DE E-MAIL DE BOAS-VINDAS
     this.emailService
       .sendWelcomeEmail(payload.email, payload.nome)
       .catch((err) => {
