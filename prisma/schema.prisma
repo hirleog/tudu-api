@@ -53,6 +53,9 @@ model Prestador {
   documento_verso             String?
   status_verificacao          String  @default("PENDENTE")
 
+  status_conta String @default("ATIVO") // ATIVO, INATIVO, SUSPENSO
+  ultimo_acesso DateTime @default(now())
+
   especializacao         String?
   descricao              String?  @db.Text
   avaliacao              String?
