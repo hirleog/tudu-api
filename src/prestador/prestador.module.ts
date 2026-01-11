@@ -5,7 +5,6 @@ import { VerificationService } from 'src/email/verification.service';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { PrestadorController } from './controller/prestador.controller';
 import { PrestadorService } from './service/prestador.service';
-import { PrestadorStatusService } from './prestador-status.service';
 
 @Module({
   imports: [PrismaModule, CloudinaryModule],
@@ -15,7 +14,6 @@ import { PrestadorStatusService } from './prestador-status.service';
     EmailService,
     VerificationService,
     EmailService,
-    PrestadorStatusService,
   ],
 })
 export class PrestadorModule {}

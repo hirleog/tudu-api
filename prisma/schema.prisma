@@ -10,19 +10,24 @@ datasource db {
 }
 
 model Cliente {
-  id_cliente        Int                @id @default(autoincrement())
-  telefone          String?
-  nome              String
-  sobrenome         String
-  cpf               String?            @unique
-  data_nascimento   String?
-  email             String             @unique
-  password          String
-  endereco_estado   String?
-  endereco_cidade   String?
-  endereco_bairro   String?
-  endereco_rua      String?
-  endereco_numero   String?
+  id_cliente      Int     @id @default(autoincrement())
+  telefone        String?
+  nome            String
+  sobrenome       String
+  cpf             String? @unique
+  data_nascimento String?
+  email           String  @unique
+  password        String
+
+  status_conta  String   @default("ATIVO") // ATIVO, INATIVO, SUSPENSO
+  ultimo_acesso DateTime @default(now())
+
+  endereco_estado String?
+  endereco_cidade String?
+  endereco_bairro String?
+  endereco_rua    String?
+  endereco_numero String?
+
   avaliacao         String?
   created_at        DateTime           @default(now())
   updated_at        DateTime           @default(now()) @updatedAt
@@ -53,7 +58,7 @@ model Prestador {
   documento_verso             String?
   status_verificacao          String  @default("PENDENTE")
 
-  status_conta String @default("ATIVO") // ATIVO, INATIVO, SUSPENSO
+  status_conta  String   @default("ATIVO") // ATIVO, INATIVO, SUSPENSO
   ultimo_acesso DateTime @default(now())
 
   especializacao         String?

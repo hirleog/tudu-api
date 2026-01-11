@@ -23,6 +23,10 @@ import { PagSeguroModule } from './pagseguro/pagseguro.module';
 import { PrestadorModule } from './prestador/prestador.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ClienteStatusService } from './cliente/cliente-status.service';
+import { PrestadorStatusService } from './prestador/prestador-status.service';
+import { UpdateLastAccessInterceptor } from './interceptors/last-access.interceptor';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -55,6 +59,14 @@ import { ScheduleModule } from '@nestjs/schedule';
     VerificationService,
     AppService,
     PaymentsService,
+
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: UpdateLastAccessInterceptor,
+    },
+    // Certifique-se de que os serviços de status estejam acessíveis aqui
+    ClienteStatusService,
+    PrestadorStatusService,
   ],
 })
 export class AppModule {}

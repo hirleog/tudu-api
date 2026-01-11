@@ -6,62 +6,70 @@ import { PrismaService } from 'src/prisma/prisma.service';
 export class PrestadorStatusService {
   private readonly logger = new Logger(PrestadorStatusService.name);
 
+  // Cache para evitar múltiplos updates no DB no mesmo dia
+  // Armazena: { id_prestador: "YYYY-MM-DD" }
+  private lastUpdateCache = new Map<number, string>();
+
   constructor(private prisma: PrismaService) {}
 
-  // Executa todo dia à meia-noite
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async handleInactiveAccounts() {
     this.logger.log(
-      'Iniciando verificação de contas inativas (regra de 3 meses)...',
+      'Iniciando verificação de prestadores inativos (3 meses)...',
     );
 
-    const agora = new Date();
-
-    // 1. DATA LIMITE: 3 meses atrás (aprox. 90 dias)
-    const tresMesesAtras = new Date(agora);
-    tresMesesAtras.setMonth(agora.getMonth() - 3);
+    const tresMesesAtras = new Date();
+    tresMesesAtras.setMonth(tresMesesAtras.getMonth() - 3);
 
     try {
-      // 2. Atualiza todos os prestadores que estão ATIVOS mas não acessam há 3 meses
       const updateResult = await this.prisma.prestador.updateMany({
         where: {
           status_conta: 'ATIVO',
-          ultimo_acesso: {
-            lt: tresMesesAtras,
-          },
+          ultimo_acesso: { lt: tresMesesAtras },
         },
-        data: {
-          status_conta: 'INATIVO',
-        },
+        data: { status_conta: 'INATIVO' },
       });
 
       if (updateResult.count > 0) {
         this.logger.log(
-          `Sucesso: ${updateResult.count} prestadores foram marcados como INATIVOS por inatividade.`,
+          `Sucesso: ${updateResult.count} prestadores inativados.`,
         );
-      } else {
-        this.logger.log('Nenhum prestador pendente de inativação hoje.');
       }
     } catch (error) {
-      this.logger.error('Erro ao processar inativação de contas:', error);
+      this.logger.error('Erro ao processar inativação de prestadores:', error);
     }
   }
 
   /**
-   * Método utilitário para ser chamado no Login ou em Middleware
-   * sempre que o prestador fizer uma requisição
+   * Atualiza o acesso com trava de 24 horas para performance otimizada.
    */
   async updateLastAccess(id: number) {
+    const hoje = new Date().toISOString().split('T')[0]; // Ex: "2026-01-10"
+    const ultimoUpdate = this.lastUpdateCache.get(id);
+
+    // Se já atualizamos hoje, encerramos aqui (sem bater no banco)
+    if (ultimoUpdate === hoje) {
+      return;
+    }
+
     try {
+      // Atualizamos o cache antes para evitar disparos simultâneos (race conditions)
+      this.lastUpdateCache.set(id, hoje);
+
       await this.prisma.prestador.update({
         where: { id_prestador: id },
         data: {
           ultimo_acesso: new Date(),
-          status_conta: 'ATIVO', // Reativa automaticamente se ele voltar
+          status_conta: 'ATIVO',
         },
       });
+
+      this.logger.debug(
+        `DB Atualizado: Último acesso do prestador ${id} registrado.`,
+      );
     } catch (error) {
-      // Falha silenciosa para não travar o login do usuário
+      // Se falhar, removemos do cache para tentar novamente na próxima requisição
+      this.lastUpdateCache.delete(id);
       this.logger.error(
         `Erro ao atualizar último acesso do prestador ${id}:`,
         error,
